@@ -3,7 +3,7 @@
 > Autonomous Architectural Decision Record (ADR) Ledger extension for the **Pi coding agent**.
 
 ```text
-.pi/decisions/
+docs/adr/
 ├── .index.json                 # Lightweight fast index (titles, tags, constraints)
 ├── 2026-03-30-ADR-001-*.md     # 5-line MADR record
 └── 2026-03-30-ADR-002-*.md
@@ -23,7 +23,7 @@ When you work alone across conflicting technology realms (legacy Lotus Notes 9, 
    - Prompts for human confirmation before writing to disk.
 
 2. **Minimalist 5-Line MADR Schema**:
-   - Stores standardized records under `.pi/decisions/`.
+   - Stores standardized records under `docs/adr/` (standard MADR / GitHub location).
    - Concise format: Context, Decision, Consequences.
 
 3. **Bounded Context Injection**:
@@ -38,7 +38,7 @@ When you work alone across conflicting technology realms (legacy Lotus Notes 9, 
 
 ## 📋 5-Line MADR Schema
 
-All decisions adhere to this format in `.pi/decisions/YYYY-MM-DD-ADR-NNN-<slug>.md`:
+All decisions adhere to this format in `docs/adr/YYYY-MM-DD-ADR-NNN-<slug>.md`:
 
 ```markdown
 # ADR-001: Bridge Notes 9 C-API with Node N-API

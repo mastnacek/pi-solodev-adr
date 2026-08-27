@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import {
   mkdir,
   readFile,
@@ -16,38 +17,53 @@ import type {
   SearchMatch,
 } from "./types.js";
 
-const DEFAULT_CONFIG_DIR = ".pi";
-const DECISIONS_SUBDIR = "decisions";
+export const DEFAULT_ADR_DIR = join("docs", "adr");
+export const CANDIDATE_ADR_DIRS = [
+  join("docs", "adr"),
+  join("docs", "decisions"),
+  join(".pi", "decisions"),
+];
 const INDEX_FILENAME = ".index.json";
 
 /**
- * Returns path to the .pi/decisions directory for a given workspace.
+ * Returns path to the ADR directory for a given workspace.
+ * Resolves to existing directories (docs/adr, docs/decisions, .pi/decisions)
+ * or defaults to the industry-standard `docs/adr`.
  */
 export function getDecisionsDir(
   cwd: string,
-  configDirName: string = DEFAULT_CONFIG_DIR,
+  dirOverride?: string,
 ): string {
-  return join(cwd, configDirName, DECISIONS_SUBDIR);
+  if (dirOverride) {
+    return join(cwd, dirOverride);
+  }
+  for (const candidate of CANDIDATE_ADR_DIRS) {
+    const full = join(cwd, candidate);
+    if (existsSync(full)) {
+      return full;
+    }
+  }
+  return join(cwd, DEFAULT_ADR_DIR);
 }
 
 /**
- * Returns path to the .pi/decisions/.index.json file.
+ * Returns path to the .index.json file in the ADR directory.
  */
 export function getIndexPath(
   cwd: string,
-  configDirName: string = DEFAULT_CONFIG_DIR,
+  dirOverride?: string,
 ): string {
-  return join(getDecisionsDir(cwd, configDirName), INDEX_FILENAME);
+  return join(getDecisionsDir(cwd, dirOverride), INDEX_FILENAME);
 }
 
 /**
- * Ensures that the .pi/decisions directory exists.
+ * Ensures that the ADR directory exists.
  */
 export async function ensureDecisionsDir(
   cwd: string,
-  configDirName: string = DEFAULT_CONFIG_DIR,
+  dirOverride?: string,
 ): Promise<string> {
-  const dir = getDecisionsDir(cwd, configDirName);
+  const dir = getDecisionsDir(cwd, dirOverride);
   await mkdir(dir, { recursive: true });
   return dir;
 }
@@ -222,9 +238,9 @@ export function synthesizeConstraintSummary(
  */
 export async function rebuildIndex(
   cwd: string,
-  configDirName: string = DEFAULT_CONFIG_DIR,
+  dirOverride?: string,
 ): Promise<ADRIndex> {
-  const dir = await ensureDecisionsDir(cwd, configDirName);
+  const dir = await ensureDecisionsDir(cwd, dirOverride);
   const entries: ADRIndexEntry[] = [];
 
   try {
@@ -270,7 +286,7 @@ export async function rebuildIndex(
     records: entries,
   };
 
-  const indexPath = getIndexPath(cwd, configDirName);
+  const indexPath = getIndexPath(cwd, dirOverride);
   await atomicWriteFile(indexPath, JSON.stringify(index, null, 2) + "\n");
   return index;
 }
@@ -280,9 +296,9 @@ export async function rebuildIndex(
  */
 export async function loadIndex(
   cwd: string,
-  configDirName: string = DEFAULT_CONFIG_DIR,
+  dirOverride?: string,
 ): Promise<ADRIndex> {
-  const indexPath = getIndexPath(cwd, configDirName);
+  const indexPath = getIndexPath(cwd, dirOverride);
   try {
     const raw = await readFile(indexPath, "utf8");
     const parsed = JSON.parse(raw) as ADRIndex;
@@ -292,7 +308,7 @@ export async function loadIndex(
   } catch {
     // Missing or invalid, rebuild
   }
-  return rebuildIndex(cwd, configDirName);
+  return rebuildIndex(cwd, dirOverride);
 }
 
 /**
@@ -301,10 +317,10 @@ export async function loadIndex(
 export async function saveRecord(
   cwd: string,
   draft: ADRDraft,
-  configDirName: string = DEFAULT_CONFIG_DIR,
+  dirOverride?: string,
 ): Promise<ADRRecord> {
-  const dir = await ensureDecisionsDir(cwd, configDirName);
-  const index = await loadIndex(cwd, configDirName);
+  const dir = await ensureDecisionsDir(cwd, dirOverride);
+  const index = await loadIndex(cwd, dirOverride);
 
   const id = getNextId(index.records);
   const date = formatDate(draft.date);
@@ -347,7 +363,7 @@ export async function saveRecord(
   });
   index.lastUpdated = new Date().toISOString();
 
-  const indexPath = getIndexPath(cwd, configDirName);
+  const indexPath = getIndexPath(cwd, dirOverride);
   await atomicWriteFile(indexPath, JSON.stringify(index, null, 2) + "\n");
 
   return { ...record, rawContent: markdown };
@@ -359,10 +375,10 @@ export async function saveRecord(
 export async function readRecord(
   cwd: string,
   idOrFile: string,
-  configDirName: string = DEFAULT_CONFIG_DIR,
+  dirOverride?: string,
 ): Promise<ADRRecord | null> {
-  const dir = getDecisionsDir(cwd, configDirName);
-  const index = await loadIndex(cwd, configDirName);
+  const dir = getDecisionsDir(cwd, dirOverride);
+  const index = await loadIndex(cwd, dirOverride);
 
   // Normalize ID query (e.g. "1" -> "ADR-001", "adr-1" -> "ADR-001")
   let targetEntry: ADRIndexEntry | undefined;
@@ -399,9 +415,9 @@ export async function readRecord(
 export async function searchRecords(
   cwd: string,
   query: string,
-  configDirName: string = DEFAULT_CONFIG_DIR,
+  dirOverride?: string,
 ): Promise<SearchMatch[]> {
-  const index = await loadIndex(cwd, configDirName);
+  const index = await loadIndex(cwd, dirOverride);
   const terms = query
     .toLowerCase()
     .split(/\s+/)

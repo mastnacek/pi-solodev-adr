@@ -65,7 +65,7 @@ test("synthesizeConstraints formats active records with capping", () => {
   // Test capping
   const capped = synthesizeConstraints(index, 1);
   assert.ok(capped.includes("- [ADR-001]"));
-  assert.ok(capped.includes("(1 more active ADR records in `.pi/decisions/`"));
+  assert.ok(capped.includes("(1 more active ADR records in `docs/adr/`"));
 });
 
 test("injectDoctrineIntoSystemPrompt appends doctrine to prompt", () => {

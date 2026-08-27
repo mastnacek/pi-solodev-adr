@@ -12,7 +12,7 @@
 
 ### 3.1 The 5-Line MADR Schema
 
-All decisions MUST adhere to the minimalist format under `.pi/decisions/`:
+All decisions MUST adhere to the minimalist format under `docs/adr/`:
 
 ```markdown
 # ADR-NNN: [Title]
@@ -28,12 +28,12 @@ All decisions MUST adhere to the minimalist format under `.pi/decisions/`:
 
 - **Do not wait for git commits.** Commits are post-mortem and detached from the transcript's reasoning.
 - **Trigger at `agent_settled`:** When the agent finishes a substantive task containing architectural changes, evaluate whether an ADR candidate exists.
-- **Human-in-the-Loop Confirmation:** Present a prompt (`ctx.ui.select` or notification) offering to record the draft. Never pollute `.pi/decisions/` with unconfirmed automated noise.
+- **Human-in-the-Loop Confirmation:** Present a prompt (`ctx.ui.select` or notification) offering to record the draft. Never pollute `docs/adr/` with unconfirmed automated noise.
 
 ### 3.3 Context Injection: Bounded Recall Over Linear Bloat
 
-- **Never linearly dump** the entire `.pi/decisions/` directory into the system prompt on every session. That is an amateur's path to context exhaustion.
-- **Maintain a lightweight index** (`.pi/decisions/.index.json`) tracking active ADR titles and key constraints.
+- **Never linearly dump** the entire `docs/adr/` directory into the system prompt on every session. That is an amateur's path to context exhaustion.
+- **Maintain a lightweight index** (`docs/adr/.index.json`) tracking active ADR titles and key constraints.
 - **On `session_start`:** Inject a concise bullet list of active architectural constraints.
 - **On demand:** Enable semantic lookup via `/adr search <query>` or integration with Pi's knowledge base.
 
@@ -50,7 +50,7 @@ pi-solo-radar/
 ├── index.ts               # Extension entrypoint (lifecycle hooks & /adr commands)
 ├── src/
 │   ├── detector.ts        # Heuristic & LLM-based architectural change detector
-│   ├── ledger.ts          # File I/O, atomic storage, indexing under .pi/decisions/
+│   ├── ledger.ts          # File I/O, atomic storage, indexing under docs/adr/
 │   ├── injector.ts        # Context synthesizer for session_start
 │   └── types.ts           # ADR interfaces and configuration schemas
 ├── package.json           # Extension manifest with peerDependencies
@@ -61,7 +61,7 @@ pi-solo-radar/
 ### 4.2 Extension Hook Architecture
 
 1. **`session_start`**:
-   - Read `.pi/decisions/`.
+   - Read `docs/adr/` (auto-discovering `docs/adr/`, `docs/decisions/`, `.pi/decisions/`).
    - Synthesize active constraints and inject into agent context (or register dynamic prompt guidance).
 2. **`agent_settled`**:
    - Inspect the recent exchange for decision triggers:

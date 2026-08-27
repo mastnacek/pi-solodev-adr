@@ -19,7 +19,7 @@ export function synthesizeConstraints(
 
   const lines: string[] = [
     "## Architectural Doctrine (pi-solo-radar)",
-    "Active constraints recorded in `.pi/decisions/` — adhere to these established decisions:",
+    "Active constraints recorded in `docs/adr/` — adhere to these established decisions:",
   ];
 
   for (const record of visibleRecords) {
@@ -28,7 +28,7 @@ export function synthesizeConstraints(
 
   if (remainingCount > 0) {
     lines.push(
-      `- *(${remainingCount} more active ADR records in \`.pi/decisions/\` — use \`/adr list\` or \`/adr search\` to inspect)*`,
+      `- *(${remainingCount} more active ADR records in \`docs/adr/\` — use \`/adr list\` or \`/adr search\` to inspect)*`,
     );
   }
 

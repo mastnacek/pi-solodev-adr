@@ -12,12 +12,10 @@ import {
 import type { ADRIndex, ADRRecord } from "../src/types.js";
 
 test("stripMarkdownSyntax removes formatting markers", () => {
-  const input = "### Heading with **bold**, *italic*, `code`, and [link](https://example.com)";
+  const input =
+    "### Heading with **bold**, *italic*, `code`, and [link](https://example.com)";
   const stripped = stripMarkdownSyntax(input);
-  assert.equal(
-    stripped,
-    "Heading with bold, italic, code, and link",
-  );
+  assert.equal(stripped, "Heading with bold, italic, code, and link");
 
   const bulletInput = "- First item\n* Second item";
   const bulletStripped = stripMarkdownSyntax(bulletInput);
@@ -129,11 +127,11 @@ test("renderDirectoryHeader and renderDirectoryTable format nicely", () => {
     ],
   };
 
-  const header = renderDirectoryHeader(index, ".pi/decisions");
+  const header = renderDirectoryHeader(index, "docs/adr");
   assert.ok(header.some((line) => line.includes("ADR ARCHITECTURAL LEDGER")));
   assert.ok(header.some((line) => line.includes("total")));
 
-  const table = renderDirectoryTable(index, ".pi/decisions");
+  const table = renderDirectoryTable(index, "docs/adr");
   assert.ok(table.includes("ARCHITECTURAL DECISIONS"));
   assert.ok(table.includes("ADR-001"));
   assert.ok(table.includes("Bridge Notes 9 C-API"));

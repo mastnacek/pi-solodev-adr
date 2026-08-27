@@ -27,6 +27,8 @@ const IGNORE_PATTERNS = [
   /^\/adr\b/i,
   /\bpi-solo-radar\b/i,
   /\b\.pi\/decisions\b/i,
+  /\bdocs\/adr\b/i,
+  /\bdocs\/decisions\b/i,
   /\brunning tests\b/i,
   /\bminor typo\b/i,
 ];

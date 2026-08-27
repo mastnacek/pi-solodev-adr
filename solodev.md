@@ -6,7 +6,7 @@ When you work alone across wildly different technology stacks (legacy Notes 9 vs
 
 - What it would do:
   - An extension that detects when you make an architectural pivot, solve a tricky legacy pitfall, or choose a specific workaround.
-  - Automatically creates a draft of a 5-line Markdown ADR file in `.pi/decisions/YYYY-MM-DD-title.md` (Context, Decision, Consequences) without any effort.
+  - Automatically creates a draft of a 5-line Markdown ADR file in `docs/adr/YYYY-MM-DD-title.md` (Context, Decision, Consequences) without any effort.
   - When you return to the project months later, Pi reads the decision index and instantly knows your architectural constraints.
 - Why it matters: It acts as your external memory, making your solo projects documented like the work of a ten-person engineering team, but without the corporate administrative overhead.
 
@@ -16,7 +16,7 @@ When you work alone across wildly different technology stacks (legacy Notes 9 vs
 
 ### 1. Minimalist 5-Line ADR Schema
 
-Store concise, human-readable markdown records under `.pi/decisions/`:
+Store concise, human-readable markdown records under `docs/adr/`:
 
 ```markdown
 # ADR-001: [Title]
@@ -29,11 +29,11 @@ Store concise, human-readable markdown records under `.pi/decisions/`:
 ### 2. Auto-Detection Trigger
 
 - Trigger on commit messages or session wrap-ups containing keywords (`refactor`, `workaround`, `pivot`, `override`, `fix(legacy)`).
-- Offer an interactive prompt: *"Would you like to record this decision in `.pi/decisions/`?"*
+- Offer an interactive prompt: *"Would you like to record this decision in `docs/adr/`?"*
 
 ### 3. Context-Injection on Session Start
 
-- On starting a Pi session, scan `.pi/decisions/` and summarize active constraints in system context so the agent never regresses or questions past architectural choices.
+- On starting a Pi session, scan `docs/adr/` and summarize active constraints in system context so the agent never regresses or questions past architectural choices.
 
 ---
 

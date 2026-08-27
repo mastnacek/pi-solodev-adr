@@ -1,5 +1,4 @@
 import {
-  CONFIG_DIR_NAME,
   DynamicBorder,
   type ExtensionAPI,
   type ExtensionCommandContext,
@@ -51,7 +50,8 @@ const SUBCOMMANDS = [
   {
     value: "show",
     label: "show <id> [--read|--raw]",
-    description: "Display decision in clean Reading Mode or Syntax Highlighting",
+    description:
+      "Display decision in clean Reading Mode or Syntax Highlighting",
   },
   {
     value: "search",
@@ -74,10 +74,10 @@ let cachedIndex: ADRIndex | null = null;
 
 async function getOrLoadIndex(
   cwd: string,
-  configDir: string,
+  dirOverride?: string,
 ): Promise<ADRIndex> {
   if (cachedIndex) return cachedIndex;
-  cachedIndex = await loadIndex(cwd, configDir);
+  cachedIndex = await loadIndex(cwd, dirOverride);
   return cachedIndex;
 }
 
@@ -85,8 +85,8 @@ function invalidateCache(): void {
   cachedIndex = null;
 }
 
-function getConfigDir(): string {
-  return CONFIG_DIR_NAME || ".pi";
+function getConfigDir(): string | undefined {
+  return undefined;
 }
 
 async function handleSessionStart(ctx: ExtensionContext): Promise<void> {
@@ -135,7 +135,7 @@ async function promptAndSaveDraft(
   ].join("\n");
 
   const choices = [
-    "Record decision in .pi/decisions/",
+    "Record decision in docs/adr/",
     "Edit before recording",
     "Dismiss",
   ];
@@ -290,7 +290,7 @@ async function openDirectoryExplorer(
 
   if (index.records.length === 0) {
     ctx.ui.notify(
-      "No ADR records found in .pi/decisions/. Use `/adr new <title>` to create one.",
+      "No ADR records found in docs/adr/. Use `/adr new <title>` to create one.",
       "info",
     );
     return;
@@ -302,68 +302,66 @@ async function openDirectoryExplorer(
   }
 
   while (true) {
-    const selectedId = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
-      const container = new Container();
+    const selectedId = await ctx.ui.custom<string | null>(
+      (tui, theme, _kb, done) => {
+        const container = new Container();
 
-      // Top Border
-      container.addChild(
-        new DynamicBorder((s: string) => theme.fg("accent", s)),
-      );
+        // Top Border
+        container.addChild(
+          new DynamicBorder((s: string) => theme.fg("accent", s)),
+        );
 
-      // Header lines
-      const headerLines = renderDirectoryHeader(index, decisionsDir, theme);
-      for (const h of headerLines) {
-        container.addChild(new Text(h, 1, 0));
-      }
-      container.addChild(new Spacer(1));
+        // Header lines
+        const headerLines = renderDirectoryHeader(index, decisionsDir, theme);
+        for (const h of headerLines) {
+          container.addChild(new Text(h, 1, 0));
+        }
+        container.addChild(new Spacer(1));
 
-      // SelectList items
-      const items: SelectItem[] = index.records.map((r) => {
-        const badge = renderStatusBadge(r.status, theme);
-        return {
-          value: r.id,
-          label: `${r.id}  ${badge}  ${r.title}`,
-          description: r.date,
-        };
-      });
+        // SelectList items
+        const items: SelectItem[] = index.records.map((r) => {
+          const badge = renderStatusBadge(r.status, theme);
+          return {
+            value: r.id,
+            label: `${r.id}  ${badge}  ${r.title}`,
+            description: r.date,
+          };
+        });
 
-      const selectList = new SelectList(
-        items,
-        Math.min(items.length, 12),
-        {
+        const selectList = new SelectList(items, Math.min(items.length, 12), {
           selectedPrefix: (t) => theme.fg("accent", t),
           selectedText: (t) => theme.fg("accent", theme.bold(t)),
           description: (t) => theme.fg("dim", t),
           scrollInfo: (t) => theme.fg("muted", t),
           noMatch: (t) => theme.fg("warning", t),
-        },
-      );
+        });
 
-      selectList.onSelect = (item) => done(item.value);
-      selectList.onCancel = () => done(null);
-      container.addChild(selectList);
+        selectList.onSelect = (item) => done(item.value);
+        selectList.onCancel = () => done(null);
+        container.addChild(selectList);
 
-      container.addChild(new Spacer(1));
-      container.addChild(
-        new Text(
-          theme.fg("dim", "↑↓: navigate • enter: read ADR • esc: exit"),
-          1,
-          0,
-        ),
-      );
-      container.addChild(
-        new DynamicBorder((s: string) => theme.fg("accent", s)),
-      );
+        container.addChild(new Spacer(1));
+        container.addChild(
+          new Text(
+            theme.fg("dim", "↑↓: navigate • enter: read ADR • esc: exit"),
+            1,
+            0,
+          ),
+        );
+        container.addChild(
+          new DynamicBorder((s: string) => theme.fg("accent", s)),
+        );
 
-      return {
-        render: (w) => container.render(w),
-        invalidate: () => container.invalidate(),
-        handleInput: (data) => {
-          selectList.handleInput(data);
-          tui.requestRender();
-        },
-      };
-    });
+        return {
+          render: (w) => container.render(w),
+          invalidate: () => container.invalidate(),
+          handleInput: (data) => {
+            selectList.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      },
+    );
 
     if (!selectedId) {
       break;
@@ -430,7 +428,10 @@ async function handleShow(
 ): Promise<void> {
   const tokens = remainder.trim().split(/\s+/).filter(Boolean);
   const isRaw = tokens.some((t) => t.toLowerCase() === "--raw");
-  const idQuery = tokens.filter((t) => !t.startsWith("--")).join(" ").trim();
+  const idQuery = tokens
+    .filter((t) => !t.startsWith("--"))
+    .join(" ")
+    .trim();
 
   if (!idQuery) {
     ctx.ui.notify(
@@ -524,7 +525,7 @@ function handleHelp(ctx: ExtensionCommandContext): void {
     "- Press `m` or `r` while viewing an ADR in the TUI to toggle Reading Mode on/off.",
     "",
     "### 5-Line MADR Format:",
-    "Stored under `.pi/decisions/YYYY-MM-DD-ADR-NNN-<slug>.md` with sections:",
+    "Stored under `docs/adr/YYYY-MM-DD-ADR-NNN-<slug>.md` with sections:",
     "`Context`, `Decision`, `Consequences`.",
   ];
 
@@ -651,9 +652,9 @@ function registerTools(pi: ExtensionAPI): void {
     name: "record_adr",
     label: "Record ADR",
     description:
-      "Record a new Architectural Decision Record (ADR) in .pi/decisions/ and update the index.",
+      "Record a new Architectural Decision Record (ADR) in docs/adr/ and update the index.",
     promptSnippet:
-      "Record an architectural decision or legacy workaround in .pi/decisions/",
+      "Record an architectural decision or legacy workaround in docs/adr/",
     promptGuidelines: [
       "Use record_adr when the user asks to record, create, or save an architectural decision record (ADR), or after establishing a significant architectural workaround or pattern.",
     ],
@@ -686,9 +687,9 @@ function registerTools(pi: ExtensionAPI): void {
     name: "search_adrs",
     label: "Search ADRs",
     description:
-      "Search historical Architectural Decision Records (ADRs) in .pi/decisions/ by keyword.",
+      "Search historical Architectural Decision Records (ADRs) in docs/adr/ by keyword.",
     promptSnippet:
-      "Search recorded architectural decisions and constraints in .pi/decisions/",
+      "Search recorded architectural decisions and constraints in docs/adr/",
     promptGuidelines: [
       "Use search_adrs when looking up existing architectural constraints or historical decisions in this project.",
     ],

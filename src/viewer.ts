@@ -84,22 +84,24 @@ export function renderStatusBadge(
  * Strips raw markdown syntax characters while preserving clean text.
  */
 export function stripMarkdownSyntax(text: string): string {
-  return text
-    // Remove bold/italic markers
-    .replace(/\*\*\*(.*?)\*\*\*/g, "$1")
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/\*(.*?)\*/g, "$1")
-    .replace(/___(.*?)___/g, "$1")
-    .replace(/__(.*?)__/g, "$1")
-    .replace(/_(.*?)_/g, "$1")
-    // Remove inline code ticks
-    .replace(/`([^`]+)`/g, "$1")
-    // Remove links [text](url) -> text
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    // Remove heading hashes at line start
-    .replace(/^#+\s+/gm, "")
-    // Replace markdown list dashes/asterisks with clean bullet
-    .replace(/^[*-]\s+/gm, "• ");
+  return (
+    text
+      // Remove bold/italic markers
+      .replace(/\*\*\*(.*?)\*\*\*/g, "$1")
+      .replace(/\*\*(.*?)\*\*/g, "$1")
+      .replace(/\*(.*?)\*/g, "$1")
+      .replace(/___(.*?)___/g, "$1")
+      .replace(/__(.*?)__/g, "$1")
+      .replace(/_(.*?)_/g, "$1")
+      // Remove inline code ticks
+      .replace(/`([^`]+)`/g, "$1")
+      // Remove links [text](url) -> text
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      // Remove heading hashes at line start
+      .replace(/^#+\s+/gm, "")
+      // Replace markdown list dashes/asterisks with clean bullet
+      .replace(/^[*-]\s+/gm, "• ")
+  );
 }
 
 /**
@@ -118,7 +120,12 @@ export function formatReadingMode(
   const cleanConsequences = stripMarkdownSyntax(record.consequences);
 
   const lines = [
-    t.bold(t.fg("accent", `ADR ${record.id.replace(/^ADR-?/i, "")} : ${record.title.toUpperCase()}`)),
+    t.bold(
+      t.fg(
+        "accent",
+        `ADR ${record.id.replace(/^ADR-?/i, "")} : ${record.title.toUpperCase()}`,
+      ),
+    ),
     divider,
     `  ${t.fg("muted", "Status:")}       ${renderStatusBadge(record.status, theme)}`,
     `  ${t.fg("muted", "Recorded:")}     ${t.fg("dim", record.date)}`,
@@ -155,7 +162,9 @@ export function formatReadingModeText(
     const trimmed = line.trim();
     if (/^#\s+(.+)$/.test(trimmed)) {
       const title = trimmed.replace(/^#\s+/, "");
-      formatted.push(t.bold(t.fg("accent", stripMarkdownSyntax(title).toUpperCase())));
+      formatted.push(
+        t.bold(t.fg("accent", stripMarkdownSyntax(title).toUpperCase())),
+      );
       formatted.push(t.fg("muted", "─".repeat(Math.min(64, title.length + 4))));
     } else if (/^##+\s+(.+)$/.test(trimmed)) {
       const heading = trimmed.replace(/^##+\s+/, "");
@@ -167,7 +176,9 @@ export function formatReadingModeText(
         const key = match[1].trim();
         const val = stripMarkdownSyntax(match[2].trim());
         if (key.toLowerCase() === "status") {
-          formatted.push(`  ${t.fg("muted", key + ":")} ${renderStatusBadge(val as ADRStatus, theme)}`);
+          formatted.push(
+            `  ${t.fg("muted", key + ":")} ${renderStatusBadge(val as ADRStatus, theme)}`,
+          );
         } else {
           formatted.push(`  ${t.fg("muted", key + ":")} ${val}`);
         }
@@ -195,14 +206,15 @@ export function highlightADRMarkdown(
   if (typeof recordOrContent === "string") {
     content = recordOrContent;
   } else {
-    content = [
-      `# ${recordOrContent.id}: ${recordOrContent.title}`,
-      `- **Date:** ${recordOrContent.date}`,
-      `- **Status:** ${recordOrContent.status}`,
-      `- **Context:** ${recordOrContent.context}`,
-      `- **Decision:** ${recordOrContent.decision}`,
-      `- **Consequences:** ${recordOrContent.consequences}`,
-    ].join("\n") + "\n";
+    content =
+      [
+        `# ${recordOrContent.id}: ${recordOrContent.title}`,
+        `- **Date:** ${recordOrContent.date}`,
+        `- **Status:** ${recordOrContent.status}`,
+        `- **Context:** ${recordOrContent.context}`,
+        `- **Decision:** ${recordOrContent.decision}`,
+        `- **Consequences:** ${recordOrContent.consequences}`,
+      ].join("\n") + "\n";
   }
 
   const lines = content.split("\n");
@@ -245,7 +257,9 @@ export function highlightADRMarkdown(
     }
 
     // Inline backticks
-    return line.replace(/`([^`]+)`/g, (_m, code) => t.fg("syntaxFunction", `\`${code}\``));
+    return line.replace(/`([^`]+)`/g, (_m, code) =>
+      t.fg("syntaxFunction", `\`${code}\``),
+    );
   });
 
   return highlighted.join("\n");
@@ -261,8 +275,12 @@ export function renderDirectoryHeader(
 ): string[] {
   const t = resolveTheme(theme);
   const active = index.records.filter((r) => r.status === "active").length;
-  const superseded = index.records.filter((r) => r.status === "superseded").length;
-  const deprecated = index.records.filter((r) => r.status === "deprecated").length;
+  const superseded = index.records.filter(
+    (r) => r.status === "superseded",
+  ).length;
+  const deprecated = index.records.filter(
+    (r) => r.status === "deprecated",
+  ).length;
 
   const total = index.records.length;
   const stats = [
@@ -297,25 +315,42 @@ function getStatusFormatted(
  */
 export function renderDirectoryTable(
   index: ADRIndex,
-  dirPath = ".pi/decisions",
+  dirPath = "docs/adr",
   theme?: StyleTheme,
 ): string {
   const t = resolveTheme(theme);
   const lines: string[] = [];
 
   // Header Box
-  lines.push(t.fg("muted", "┌─ ARCHITECTURAL DECISIONS ──────────────────────────────────────────────────┐"));
+  lines.push(
+    t.fg(
+      "muted",
+      "┌─ ARCHITECTURAL DECISIONS ──────────────────────────────────────────────────┐",
+    ),
+  );
   for (const hLine of renderDirectoryHeader(index, dirPath, theme)) {
     lines.push(hLine);
   }
-  lines.push(t.fg("muted", "├──────────┬──────────────┬─────────────────────┬────────────────────────────┤"));
+  lines.push(
+    t.fg(
+      "muted",
+      "├──────────┬──────────────┬─────────────────────┬────────────────────────────┤",
+    ),
+  );
   lines.push(
     `│ ${t.bold(t.fg("accent", "ID       "))} │ ${t.bold(t.fg("accent", "STATUS       "))} │ ${t.bold(t.fg("accent", "RECORDED (DATE/TIME) "))} │ ${t.bold(t.fg("accent", "TITLE                      "))} │`,
   );
-  lines.push(t.fg("muted", "├──────────┼──────────────┼─────────────────────┼────────────────────────────┤"));
+  lines.push(
+    t.fg(
+      "muted",
+      "├──────────┼──────────────┼─────────────────────┼────────────────────────────┤",
+    ),
+  );
 
   if (index.records.length === 0) {
-    lines.push(`│ ${t.fg("dim", "No architectural decisions recorded yet in .pi/decisions/              ")} │`);
+    lines.push(
+      `│ ${t.fg("dim", "No architectural decisions recorded yet in docs/adr/                  ")} │`,
+    );
   } else {
     for (const r of index.records) {
       const idCol = t.bold(t.fg("accent", r.id.padEnd(8)));
@@ -329,8 +364,18 @@ export function renderDirectoryTable(
     }
   }
 
-  lines.push(t.fg("muted", "└──────────┴──────────────┴─────────────────────┴────────────────────────────┘"));
-  lines.push(t.fg("dim", "  Commands: /adr show <id> [--read|--raw] • /adr new <title> • /adr search <query>"));
+  lines.push(
+    t.fg(
+      "muted",
+      "└──────────┴──────────────┴─────────────────────┴────────────────────────────┘",
+    ),
+  );
+  lines.push(
+    t.fg(
+      "dim",
+      "  Commands: /adr show <id> [--read|--raw] • /adr new <title> • /adr search <query>",
+    ),
+  );
 
   return lines.join("\n");
 }
