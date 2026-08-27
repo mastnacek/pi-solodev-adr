@@ -136,7 +136,9 @@ const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 /**
  * Parses and validates JSON translation payload.
  */
-export function parseTranslationPayload(rawText: string): ParsedTranslation | null {
+export function parseTranslationPayload(
+  rawText: string,
+): ParsedTranslation | null {
   try {
     const cleanJson = rawText
       .replace(/^```json\s*/i, "")
@@ -209,7 +211,12 @@ export async function translateRecordToCzech(
         const textContent = data.choices?.[0]?.message?.content?.trim();
         if (textContent) {
           const parsed = parseTranslationPayload(textContent);
-          if (parsed?.title && parsed.context && parsed.decision && parsed.consequences) {
+          if (
+            parsed?.title &&
+            parsed.context &&
+            parsed.decision &&
+            parsed.consequences
+          ) {
             const translated: ADRRecord = {
               ...record,
               title: parsed.title.trim(),

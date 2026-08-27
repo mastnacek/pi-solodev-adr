@@ -42,7 +42,15 @@ test("parseTranslationPayload rejects malformed data", () => {
 });
 
 test("LITERAL_TRANSLATION_SYSTEM_PROMPT enforces strict literal translation", () => {
-  assert.ok(LITERAL_TRANSLATION_SYSTEM_PROMPT.includes("strict, faithful, literal translator"));
-  assert.ok(LITERAL_TRANSLATION_SYSTEM_PROMPT.includes("Do not improve, embellish, explain, summarize"));
+  assert.ok(
+    LITERAL_TRANSLATION_SYSTEM_PROMPT.includes(
+      "strict, faithful, literal translator",
+    ),
+  );
+  assert.ok(
+    LITERAL_TRANSLATION_SYSTEM_PROMPT.includes(
+      "Do not improve, embellish, explain, summarize",
+    ),
+  );
   assert.ok(LITERAL_TRANSLATION_SYSTEM_PROMPT.includes("Czech"));
 });

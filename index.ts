@@ -268,7 +268,7 @@ async function openReaderView(
       container.addChild(new Spacer(1));
       container.addChild(
         new Text(
-          violetGlow("m/r: formatting • t: přeložit (CS/EN) • esc: close"),
+          violetGlow("m: mode (clean/raw) • t/l: language (CS/EN) • esc: close"),
           1,
           0,
         ),
@@ -289,7 +289,7 @@ async function openReaderView(
           readingMode = !readingMode;
           rebuild();
           tui.requestRender();
-        } else if (matchesKey(data, "t")) {
+        } else if (matchesKey(data, "t") || matchesKey(data, "l")) {
           if (isCzech) {
             isCzech = false;
             rebuild();
