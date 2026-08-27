@@ -32,13 +32,26 @@ export interface TranslationResult {
 
 interface ModelRegistryLike {
   find?: (provider: string, modelId: string) => Model<Api> | undefined;
+  getModels?: () => Array<Model<Api>>;
   getApiKeyAndHeaders?: (model: Model<Api>) => Promise<{
     ok: boolean;
     apiKey?: string;
     headers?: Record<string, string>;
+    baseUrl?: string;
     env?: Record<string, string>;
     error?: string;
   }>;
+  complete?: (
+    model: Model<Api>,
+    context: Context,
+    options?: {
+      apiKey?: string;
+      headers?: Record<string, string>;
+      env?: Record<string, string>;
+      signal?: AbortSignal;
+      maxTokens?: number;
+    },
+  ) => Promise<AssistantMessage>;
 }
 
 export const LITERAL_TRANSLATION_SYSTEM_PROMPT = `You are a strict, faithful, literal translator.
@@ -296,13 +309,26 @@ export async function translateRecordToCzech(
   };
 
   try {
-    const response: AssistantMessage = await completeSimple(model, llmContext, {
+    const registry = (ctx as { modelRegistry?: ModelRegistryLike })
+      ?.modelRegistry;
+    let response: AssistantMessage;
+
+    const requestOptions = {
       apiKey: auth.apiKey,
       headers: auth.headers,
       env: auth.env,
       maxTokens: 4096,
       signal: (ctx as { signal?: AbortSignal })?.signal,
-    });
+    };
+
+    if (registry && typeof registry.complete === "function") {
+      response = await registry.complete(model, llmContext, requestOptions);
+    } else {
+      const effectiveModel: Model<Api> = auth.baseUrl
+        ? { ...model, baseUrl: auth.baseUrl }
+        : model;
+      response = await completeSimple(effectiveModel, llmContext, requestOptions);
+    }
 
     if (response.stopReason === "error") {
       return {
