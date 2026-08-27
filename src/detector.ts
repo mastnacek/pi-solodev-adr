@@ -31,6 +31,14 @@ const IGNORE_PATTERNS = [
   /\bdocs\/decisions\b/i,
   /\brunning tests\b/i,
   /\bminor typo\b/i,
+  /\bwarning:\s*in the working copy\b/i,
+  /\bLF will be replaced by CRLF\b/i,
+  /\b\[main\s+[0-9a-f]+\]/i,
+  /\bcommit\s+[0-9a-f]+\b/i,
+  /\bTo https:\/\/github\.com\b/i,
+  /\bAuto-fixed \d+ issue\(s\)\b/i,
+  /\bpi-lens applied autofix\b/i,
+  /\bauthoritative for subsequent edits\b/i,
 ];
 
 function isString(value: string | object | null | undefined): value is string {
