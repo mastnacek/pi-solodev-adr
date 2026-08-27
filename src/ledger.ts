@@ -30,10 +30,7 @@ const INDEX_FILENAME = ".index.json";
  * Resolves to existing directories (docs/adr, docs/decisions, .pi/decisions)
  * or defaults to the industry-standard `docs/adr`.
  */
-export function getDecisionsDir(
-  cwd: string,
-  dirOverride?: string,
-): string {
+export function getDecisionsDir(cwd: string, dirOverride?: string): string {
   if (dirOverride) {
     return join(cwd, dirOverride);
   }
@@ -49,10 +46,7 @@ export function getDecisionsDir(
 /**
  * Returns path to the .index.json file in the ADR directory.
  */
-export function getIndexPath(
-  cwd: string,
-  dirOverride?: string,
-): string {
+export function getIndexPath(cwd: string, dirOverride?: string): string {
   return join(getDecisionsDir(cwd, dirOverride), INDEX_FILENAME);
 }
 

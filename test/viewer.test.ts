@@ -138,3 +138,68 @@ test("renderDirectoryHeader and renderDirectoryTable format nicely", () => {
   assert.ok(table.includes("ADR-002"));
   assert.ok(table.includes("Old Storage Method"));
 });
+
+test("viewer functions work with mock Theme class without unbinding this", () => {
+  class MockTheme {
+    private fgColors = new Map([
+      ["accent", "\x1b[36m"],
+      ["success", "\x1b[32m"],
+      ["warning", "\x1b[33m"],
+      ["error", "\x1b[31m"],
+      ["muted", "\x1b[90m"],
+      ["dim", "\x1b[90m"],
+      ["text", "\x1b[0m"],
+    ]);
+
+    fg(color: any, text: string): string {
+      const ansi = this.fgColors.get(color) || "";
+      return `${ansi}${text}\x1b[39m`;
+    }
+
+    bold(text: string): string {
+      return `\x1b[1m${text}\x1b[22m`;
+    }
+  }
+
+  const mockTheme = new MockTheme() as any;
+  const record: ADRRecord = {
+    id: "ADR-001",
+    title: "Test ADR",
+    date: "2026-08-27 10:50:45",
+    context: "Context text",
+    decision: "Decision text",
+    consequences: "Consequences text",
+    status: "active",
+    file: "1.md",
+  };
+
+  const badge = renderStatusBadge("active", mockTheme);
+  assert.ok(badge.includes("active"));
+
+  const reading = formatReadingMode(record, mockTheme);
+  assert.ok(reading.includes("Test ADR".toUpperCase()));
+
+  const raw = highlightADRMarkdown(record, mockTheme);
+  assert.ok(raw.includes("ADR-001"));
+
+  const indexEntry = {
+    id: record.id,
+    title: record.title,
+    date: record.date,
+    file: record.file,
+    constraint: "Test constraint",
+    status: record.status,
+  };
+
+  const index: ADRIndex = {
+    version: 1,
+    lastUpdated: "2026-08-27 10:50:45",
+    records: [indexEntry],
+  };
+
+  const header = renderDirectoryHeader(index, "docs/adr", mockTheme);
+  assert.ok(header.length > 0);
+
+  const table = renderDirectoryTable(index, "docs/adr", mockTheme);
+  assert.ok(table.includes("ADR-001"));
+});

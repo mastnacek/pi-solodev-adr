@@ -52,11 +52,11 @@ function defaultUnderline(text: string): string {
 
 function resolveTheme(theme?: StyleTheme): Required<StyleTheme> {
   return {
-    fg: theme?.fg ?? defaultFg,
-    bg: theme?.bg ?? ((_, t) => t),
-    bold: theme?.bold ?? defaultBold,
-    italic: theme?.italic ?? defaultItalic,
-    underline: theme?.underline ?? defaultUnderline,
+    fg: (color, text) => (theme?.fg ? theme.fg(color, text) : defaultFg(color, text)),
+    bg: (color, text) => (theme?.bg ? theme.bg(color, text) : text),
+    bold: (text) => (theme?.bold ? theme.bold(text) : defaultBold(text)),
+    italic: (text) => (theme?.italic ? theme.italic(text) : defaultItalic(text)),
+    underline: (text) => (theme?.underline ? theme.underline(text) : defaultUnderline(text)),
   };
 }
 
