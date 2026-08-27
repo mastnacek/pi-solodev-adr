@@ -1,9 +1,19 @@
 import {
   CONFIG_DIR_NAME,
+  DynamicBorder,
   type ExtensionAPI,
   type ExtensionCommandContext,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import {
+  Container,
+  Key,
+  type SelectItem,
+  SelectList,
+  Spacer,
+  Text,
+  matchesKey,
+} from "@earendil-works/pi-tui";
 import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { detectArchitecturalChange } from "./src/detector.js";
@@ -19,6 +29,13 @@ import {
   searchRecords,
 } from "./src/ledger.js";
 import type { ADRDraft, ADRIndex, ADRRecord, ADRStatus } from "./src/types.js";
+import {
+  formatReadingMode,
+  highlightADRMarkdown,
+  renderDirectoryHeader,
+  renderDirectoryTable,
+  renderStatusBadge,
+} from "./src/viewer.js";
 
 const SUBCOMMANDS = [
   {
@@ -33,8 +50,8 @@ const SUBCOMMANDS = [
   },
   {
     value: "show",
-    label: "show <id>",
-    description: "Display full decision details for an ADR ID",
+    label: "show <id> [--read|--raw]",
+    description: "Display decision in clean Reading Mode or Syntax Highlighting",
   },
   {
     value: "search",
@@ -192,9 +209,85 @@ async function handleAgentSettled(ctx: ExtensionContext): Promise<void> {
   }
 }
 
-async function handleList(ctx: ExtensionCommandContext): Promise<void> {
+async function openReaderView(
+  ctx: ExtensionCommandContext,
+  record: ADRRecord,
+  initialReadingMode = true,
+): Promise<void> {
+  if (!ctx.hasUI) {
+    const text = initialReadingMode
+      ? formatReadingMode(record)
+      : highlightADRMarkdown(record);
+    ctx.ui.notify(text, "info");
+    return;
+  }
+
+  await ctx.ui.custom<void>((tui, theme, _kb, done) => {
+    let readingMode = initialReadingMode;
+    const container = new Container();
+
+    const rebuild = () => {
+      container.clear();
+      // Top Border
+      container.addChild(
+        new DynamicBorder((s: string) => theme.fg("accent", s)),
+      );
+
+      // Title & Mode pill
+      const modeBadge = readingMode
+        ? theme.fg("success", "[● Reading Mode (Clean)]")
+        : theme.fg("warning", "[⚡ Syntax Highlighting (Raw)]");
+      const titleLine = `${theme.fg("accent", theme.bold(`${record.id}: ${record.title}`))}  ${modeBadge}`;
+      container.addChild(new Text(titleLine, 1, 0));
+      container.addChild(new Spacer(1));
+
+      // Body text
+      const content = readingMode
+        ? formatReadingMode(record, theme)
+        : highlightADRMarkdown(record, theme);
+      container.addChild(new Text(content, 1, 0));
+
+      container.addChild(new Spacer(1));
+      container.addChild(
+        new Text(
+          theme.fg("dim", "m / r: toggle reading mode • esc: close"),
+          1,
+          0,
+        ),
+      );
+      container.addChild(
+        new DynamicBorder((s: string) => theme.fg("accent", s)),
+      );
+    };
+
+    rebuild();
+
+    return {
+      render: (w) => container.render(w),
+      invalidate: () => {
+        rebuild();
+        container.invalidate();
+      },
+      handleInput: (data) => {
+        if (matchesKey(data, "m") || matchesKey(data, "r")) {
+          readingMode = !readingMode;
+          rebuild();
+          tui.requestRender();
+        } else if (matchesKey(data, Key.escape) || matchesKey(data, "q")) {
+          done();
+        }
+      },
+    };
+  });
+}
+
+async function openDirectoryExplorer(
+  ctx: ExtensionCommandContext,
+): Promise<void> {
   const configDir = getConfigDir();
   const index = await getOrLoadIndex(ctx.cwd, configDir);
+  const decisionsDir = getDecisionsDir(ctx.cwd, configDir);
+
   if (index.records.length === 0) {
     ctx.ui.notify(
       "No ADR records found in .pi/decisions/. Use `/adr new <title>` to create one.",
@@ -203,22 +296,88 @@ async function handleList(ctx: ExtensionCommandContext): Promise<void> {
     return;
   }
 
-  const lines = [
-    `# Architectural Decisions (${index.records.length} total)`,
-    "",
-    "| ID | Date | Status | Title |",
-    "|---|---|---|---|",
-  ];
-
-  for (const r of index.records) {
-    lines.push(`| **${r.id}** | ${r.date} | \`${r.status}\` | ${r.title} |`);
+  if (!ctx.hasUI) {
+    ctx.ui.notify(renderDirectoryTable(index, decisionsDir), "info");
+    return;
   }
 
-  lines.push(
-    "",
-    "Use `/adr show <id>` to read details or `/adr search <query>` to search.",
-  );
-  ctx.ui.notify(lines.join("\n"), "info");
+  while (true) {
+    const selectedId = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+      const container = new Container();
+
+      // Top Border
+      container.addChild(
+        new DynamicBorder((s: string) => theme.fg("accent", s)),
+      );
+
+      // Header lines
+      const headerLines = renderDirectoryHeader(index, decisionsDir, theme);
+      for (const h of headerLines) {
+        container.addChild(new Text(h, 1, 0));
+      }
+      container.addChild(new Spacer(1));
+
+      // SelectList items
+      const items: SelectItem[] = index.records.map((r) => {
+        const badge = renderStatusBadge(r.status, theme);
+        return {
+          value: r.id,
+          label: `${r.id}  ${badge}  ${r.title}`,
+          description: r.date,
+        };
+      });
+
+      const selectList = new SelectList(
+        items,
+        Math.min(items.length, 12),
+        {
+          selectedPrefix: (t) => theme.fg("accent", t),
+          selectedText: (t) => theme.fg("accent", theme.bold(t)),
+          description: (t) => theme.fg("dim", t),
+          scrollInfo: (t) => theme.fg("muted", t),
+          noMatch: (t) => theme.fg("warning", t),
+        },
+      );
+
+      selectList.onSelect = (item) => done(item.value);
+      selectList.onCancel = () => done(null);
+      container.addChild(selectList);
+
+      container.addChild(new Spacer(1));
+      container.addChild(
+        new Text(
+          theme.fg("dim", "↑↓: navigate • enter: read ADR • esc: exit"),
+          1,
+          0,
+        ),
+      );
+      container.addChild(
+        new DynamicBorder((s: string) => theme.fg("accent", s)),
+      );
+
+      return {
+        render: (w) => container.render(w),
+        invalidate: () => container.invalidate(),
+        handleInput: (data) => {
+          selectList.handleInput(data);
+          tui.requestRender();
+        },
+      };
+    });
+
+    if (!selectedId) {
+      break;
+    }
+
+    const record = await readRecord(ctx.cwd, selectedId, configDir);
+    if (record) {
+      await openReaderView(ctx, record, true);
+    }
+  }
+}
+
+async function handleList(ctx: ExtensionCommandContext): Promise<void> {
+  await openDirectoryExplorer(ctx);
 }
 
 async function handleNew(
@@ -269,9 +428,13 @@ async function handleShow(
   remainder: string,
   ctx: ExtensionCommandContext,
 ): Promise<void> {
-  if (!remainder) {
+  const tokens = remainder.trim().split(/\s+/).filter(Boolean);
+  const isRaw = tokens.some((t) => t.toLowerCase() === "--raw");
+  const idQuery = tokens.filter((t) => !t.startsWith("--")).join(" ").trim();
+
+  if (!idQuery) {
     ctx.ui.notify(
-      "Usage: `/adr show <id>` (e.g. `/adr show ADR-001`)",
+      "Usage: `/adr show <id> [--read | --raw]` (e.g. `/adr show ADR-001`)",
       "warning",
     );
     return;
@@ -280,16 +443,16 @@ async function handleShow(
   const configDir = getConfigDir();
   const record: ADRRecord | null = await readRecord(
     ctx.cwd,
-    remainder,
+    idQuery,
     configDir,
   );
   if (!record) {
-    ctx.ui.notify(`ADR not found: "${remainder}"`, "error");
+    ctx.ui.notify(`ADR not found: "${idQuery}"`, "error");
     return;
   }
 
-  const markdown = formatADRMarkdown(record);
-  ctx.ui.notify(markdown, "info");
+  const readingMode = !isRaw;
+  await openReaderView(ctx, record, readingMode);
 }
 
 async function handleSearch(
@@ -313,8 +476,9 @@ async function handleSearch(
     "",
   ];
   for (const match of results) {
+    const badge = renderStatusBadge(match.status);
     lines.push(
-      `- **${match.id}** (${match.date}) [${match.status}]: **${match.title}**`,
+      `- **${match.id}** (${match.date}) [${badge}]: **${match.title}**`,
     );
     lines.push(`  *${match.constraint}*`);
   }
@@ -348,12 +512,16 @@ function handleHelp(ctx: ExtensionCommandContext): void {
     "Autonomous Architectural Decision Record (ADR) Ledger for Solo Engineers.",
     "",
     "### Available Commands:",
-    "- `/adr list` — View all recorded decisions in a table.",
+    "- `/adr list` — Interactive TUI directory explorer / decision ledger.",
     "- `/adr new <title>` — Interactively draft and save a 5-line MADR.",
-    "- `/adr show <id>` — Display formatted decision markdown (e.g. `/adr show ADR-001`).",
+    "- `/adr show <id> [--read|--raw]` — Display decision in clean Reading Mode or Syntax Highlighting.",
     "- `/adr search <query>` — Keyword search across historical constraints.",
     "- `/adr status` — Show active ADR counts and storage metrics.",
     "- `/adr help` — Display this guide.",
+    "",
+    "### Reading Mode vs Syntax Highlighting:",
+    "- In Reading Mode, markdown formatting markers (`#`, `**`, `` ` ``, bullets) are stripped for clean reading.",
+    "- Press `m` or `r` while viewing an ADR in the TUI to toggle Reading Mode on/off.",
     "",
     "### 5-Line MADR Format:",
     "Stored under `.pi/decisions/YYYY-MM-DD-ADR-NNN-<slug>.md` with sections:",

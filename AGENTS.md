@@ -1,6 +1,7 @@
 **`pi-solo-radar`** — an autonomous Architectural Decision Record (ADR) Ledger extension for the **Pi coding agent**.
 
 `pi-solo-radar` acts as the external cybernetic cortex of the solo engineer:
+
 1. **Passively monitors** coding transcripts and git milestones for architectural pivots, legacy workarounds, and structural overrides.
 2. **Generates concise 5-line MADR drafts** without interrupting flow.
 3. **Injects bounded architectural constraints** into subsequent Pi sessions so the agent never regresses or questions established doctrine.
@@ -10,6 +11,7 @@
 ## 3. Inviolable Architectural Doctrine
 
 ### 3.1 The 5-Line MADR Schema
+
 All decisions MUST adhere to the minimalist format under `.pi/decisions/`:
 
 ```markdown
@@ -23,11 +25,13 @@ All decisions MUST adhere to the minimalist format under `.pi/decisions/`:
 - **Rule:** No 10-page bureaucratic essays. If a decision cannot be expressed in 5 lines, it is over-engineered.
 
 ### 3.2 Detection Timing: Strike at `agent_settled`
+
 - **Do not wait for git commits.** Commits are post-mortem and detached from the transcript's reasoning.
 - **Trigger at `agent_settled`:** When the agent finishes a substantive task containing architectural changes, evaluate whether an ADR candidate exists.
 - **Human-in-the-Loop Confirmation:** Present a prompt (`ctx.ui.select` or notification) offering to record the draft. Never pollute `.pi/decisions/` with unconfirmed automated noise.
 
 ### 3.3 Context Injection: Bounded Recall Over Linear Bloat
+
 - **Never linearly dump** the entire `.pi/decisions/` directory into the system prompt on every session. That is an amateur's path to context exhaustion.
 - **Maintain a lightweight index** (`.pi/decisions/.index.json`) tracking active ADR titles and key constraints.
 - **On `session_start`:** Inject a concise bullet list of active architectural constraints.
@@ -40,6 +44,7 @@ All decisions MUST adhere to the minimalist format under `.pi/decisions/`:
 When tasked with developing or extending `pi-solo-radar`, adhere to this exact structural blueprint:
 
 ### 4.1 Project Layout
+
 ```text
 pi-solo-radar/
 ├── index.ts               # Extension entrypoint (lifecycle hooks & /adr commands)
@@ -54,6 +59,7 @@ pi-solo-radar/
 ```
 
 ### 4.2 Extension Hook Architecture
+
 1. **`session_start`**:
    - Read `.pi/decisions/`.
    - Synthesize active constraints and inject into agent context (or register dynamic prompt guidance).
@@ -66,7 +72,9 @@ pi-solo-radar/
    - Ensure index consistency and flush unwritten caches.
 
 ### 4.3 Command Surface: `/adr`
+
 The extension must register the `/adr` command with full completion support:
+
 - `/adr list` — View all active decision records and their statuses.
 - `/adr new <title>` — Manually draft a new ADR.
 - `/adr show <id>` — Display a specific record.

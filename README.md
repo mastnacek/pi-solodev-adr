@@ -57,12 +57,18 @@ All decisions adhere to this format in `.pi/decisions/YYYY-MM-DD-ADR-NNN-<slug>.
 
 | Command | Description |
 | --- | --- |
-| `/adr list` | Table of all recorded architectural decisions and statuses. |
+| `/adr list` | Interactive TUI directory explorer with live status indicators and selector. |
+| `/adr show <id> [--read\|--raw]` | Display decision in clean Reading Mode (syntax stripped) or Syntax Highlighting. |
 | `/adr new <title>` | Interactive wizard to manually draft and record a new ADR. |
-| `/adr show <id>` | Display formatted decision markdown (e.g. `/adr show ADR-001`). |
 | `/adr search <query>` | Fast keyword search across historical constraints and titles. |
 | `/adr status` | Report radar status, active constraints count, and storage paths. |
 | `/adr help` | Display complete command and MADR schema reference. |
+
+### 📖 Reading Mode vs. Syntax Highlighting
+
+- **Clean Reading Mode (Default):** Strips raw markdown syntax elements (`#`, `**`, `` ` ``, bullets) and applies terminal typography (clean section headers, status badges, bullet glyphs).
+- **Syntax Highlighting Mode:** Colorizes raw markdown tokens and MADR fields.
+- **Interactive Toggle:** While viewing an ADR in the Pi TUI, press `m` or `r` to toggle Reading Mode on/off.
 
 ### Autonomous Agent Tools (`LLM-Callable`)
 
