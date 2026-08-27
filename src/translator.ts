@@ -5,6 +5,7 @@ import type {
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { loadConfig } from "./config.js";
 import type { ADRRecord } from "./types.js";
 
 const translationCache = new Map<string, ADRRecord>();
@@ -37,34 +38,58 @@ interface ModelRegistryLike {
 }
 
 /**
- * Finds an OpenRouter API key from session context, env, or Pi stores.
+ * Finds an API key and resolved model from configured model, session context, env, or Pi stores.
  */
 export async function getOpenRouterAuth(
   ctx: ExtensionContext | ExtensionCommandContext,
 ): Promise<OpenRouterAuth> {
+  const config = loadConfig();
+  const rawModel =
+    config.translateModel || "openrouter/google/gemini-2.5-flash";
+  let targetProvider = "openrouter";
+  let targetModel = rawModel;
+
+  if (rawModel.includes("/")) {
+    const slash = rawModel.indexOf("/");
+    targetProvider = rawModel.slice(0, slash);
+    targetModel = rawModel.slice(slash + 1);
+  }
+
   // 1. Check environment variable
-  if (process.env.OPENROUTER_API_KEY) {
+  if (
+    process.env.OPENROUTER_API_KEY &&
+    (targetProvider === "openrouter" || targetProvider === "default")
+  ) {
     return {
       apiKey: process.env.OPENROUTER_API_KEY,
-      model: "google/gemini-2.5-flash",
+      model: targetModel,
     };
   }
 
-  // 2. Check ctx.modelRegistry for openrouter provider
+  // 2. Check ctx.modelRegistry for configured provider
   try {
     const registry = (ctx as { modelRegistry?: ModelRegistryLike })
       .modelRegistry;
     if (registry) {
-      const candidates = [
+      const found = registry.find?.(targetProvider, targetModel);
+      if (found) {
+        const auth = await registry.getApiKeyAndHeaders?.(found);
+        if (auth?.ok && auth.apiKey) {
+          return { apiKey: auth.apiKey, model: targetModel };
+        }
+      }
+
+      // Fallback candidates on openrouter
+      const fallbackCandidates = [
         "google/gemini-2.5-flash",
         "google/gemini-3.1-flash-lite",
         "meta-llama/llama-3.3-70b-instruct",
         "anthropic/claude-3.5-haiku",
       ];
-      for (const cand of candidates) {
-        const found = registry.find?.("openrouter", cand);
-        if (found) {
-          const auth = await registry.getApiKeyAndHeaders?.(found);
+      for (const cand of fallbackCandidates) {
+        const foundFallback = registry.find?.("openrouter", cand);
+        if (foundFallback) {
+          const auth = await registry.getApiKeyAndHeaders?.(foundFallback);
           if (auth?.ok && auth.apiKey) {
             return { apiKey: auth.apiKey, model: cand };
           }
@@ -85,10 +110,16 @@ export async function getOpenRouterAuth(
     );
     const raw = readFileSync(modelsStorePath, "utf8");
     const parsed = JSON.parse(raw) as Record<string, { apiKey?: string }>;
+    if (parsed[targetProvider]?.apiKey) {
+      return {
+        apiKey: parsed[targetProvider].apiKey,
+        model: targetModel,
+      };
+    }
     if (parsed.openrouter?.apiKey) {
       return {
         apiKey: parsed.openrouter.apiKey,
-        model: "google/gemini-2.5-flash",
+        model: targetModel,
       };
     }
   } catch {
@@ -100,17 +131,23 @@ export async function getOpenRouterAuth(
     const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
     const raw = readFileSync(settingsPath, "utf8");
     const parsed = JSON.parse(raw) as Record<string, { apiKey?: string }>;
+    if (parsed[targetProvider]?.apiKey) {
+      return {
+        apiKey: parsed[targetProvider].apiKey,
+        model: targetModel,
+      };
+    }
     if (parsed.openrouter?.apiKey) {
       return {
         apiKey: parsed.openrouter.apiKey,
-        model: "google/gemini-2.5-flash",
+        model: targetModel,
       };
     }
   } catch {
     // Non-fatal
   }
 
-  return {};
+  return { model: targetModel };
 }
 
 /**

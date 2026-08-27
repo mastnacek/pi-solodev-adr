@@ -29,6 +29,11 @@ import {
 } from "./src/ledger.js";
 import type { ADRDraft, ADRIndex, ADRRecord, ADRStatus } from "./src/types.js";
 import {
+  getAvailableModels,
+  loadConfig,
+  saveConfig,
+} from "./src/config.js";
+import {
   cyanGlow,
   dividerGlow,
   formatReadingMode,
@@ -64,6 +69,11 @@ const SUBCOMMANDS = [
     value: "search",
     label: "search <term>",
     description: "Keyword search across historical decisions",
+  },
+  {
+    value: "model",
+    label: "model [name]",
+    description: "Select or display translation model (e.g. openrouter/google/gemini-2.5-flash)",
   },
   {
     value: "status",
@@ -268,7 +278,9 @@ async function openReaderView(
       container.addChild(new Spacer(1));
       container.addChild(
         new Text(
-          violetGlow("m: mode (clean/raw) • t/l: language (CS/EN) • esc: close"),
+          violetGlow(
+            "m: mode (clean/raw) • t/l: language (CS/EN) • esc: close",
+          ),
           1,
           0,
         ),
@@ -528,8 +540,29 @@ async function handleSearch(
   ctx.ui.notify(lines.join("\n"), "info");
 }
 
+async function handleModel(
+  remainder: string,
+  ctx: ExtensionCommandContext,
+): Promise<void> {
+  const config = loadConfig();
+  const cleanModel = remainder.trim();
+  if (!cleanModel) {
+    const available = getAvailableModels(ctx);
+    ctx.ui.notify(
+      `Current translation model: ${pinkGlow(config.translateModel || "openrouter/google/gemini-2.5-flash")}\n\nAvailable models:\n` +
+        available.slice(0, 10).map((m) => `  - /adr model ${m}`).join("\n"),
+      "info",
+    );
+    return;
+  }
+
+  saveConfig({ translateModel: cleanModel });
+  ctx.ui.notify(`Translation model set to: ${pinkGlow(cleanModel)}`, "info");
+}
+
 async function handleStatus(ctx: ExtensionCommandContext): Promise<void> {
   const configDir = getConfigDir();
+  const config = loadConfig();
   const index = await getOrLoadIndex(ctx.cwd, configDir);
   const decisionsDir = getDecisionsDir(ctx.cwd, configDir);
   const indexPath = getIndexPath(ctx.cwd, configDir);
@@ -539,6 +572,7 @@ async function handleStatus(ctx: ExtensionCommandContext): Promise<void> {
     "# pi-solo-radar Status",
     `- **Directory:** ${decisionsDir}`,
     `- **Index File:** ${indexPath}`,
+    `- **Translation Model:** ${config.translateModel}`,
     `- **Total Records:** ${index.records.length}`,
     `- **Active Constraints:** ${activeCount}`,
     `- **Last Updated:** ${index.lastUpdated || "Never"}`,
@@ -558,12 +592,14 @@ function handleHelp(ctx: ExtensionCommandContext): void {
     "- `/adr new <title>` — Interactively draft and save a 5-line MADR.",
     "- `/adr show <id> [--read|--raw]` — Display decision in clean Reading Mode or Syntax Highlighting.",
     "- `/adr search <query>` — Keyword search across historical constraints.",
+    "- `/adr model [model]` — Select or display translation model override.",
     "- `/adr status` — Show active ADR counts and storage metrics.",
     "- `/adr help` — Display this guide.",
     "",
-    "### Reading Mode vs Syntax Highlighting:",
+    "### Reading Mode & Translation:",
     "- In Reading Mode, markdown formatting markers (`#`, `**`, `` ` ``, bullets) are stripped for clean reading.",
-    "- Press `m` or `r` while viewing an ADR in the TUI to toggle Reading Mode on/off.",
+    "- Press `m` while viewing an ADR to toggle between clean reading mode and raw syntax mode.",
+    "- Press `t` or `l` while viewing an ADR to toggle between Czech translation and English original.",
     "",
     "### 5-Line MADR Format:",
     "Stored under `docs/adr/YYYY-MM-DD-ADR-NNN-<slug>.md` with sections:",
@@ -591,6 +627,27 @@ async function getCompletions(
   }
 
   const [, subcommand, argPrefix] = match;
+  if (subcommand.toLowerCase() === "model") {
+    try {
+      const query = (argPrefix || "").trim().toLowerCase();
+      const available = getAvailableModels();
+      const matches = available.flatMap((m) =>
+        !query || m.toLowerCase().includes(query)
+          ? [
+              {
+                value: `model ${m}`,
+                label: `model ${m}`,
+                description: `Use model ${m}`,
+              },
+            ]
+          : [],
+      );
+      return matches.length > 0 ? matches : null;
+    } catch {
+      return null;
+    }
+  }
+
   if (subcommand.toLowerCase() === "show") {
     try {
       const query = argPrefix.trim().toLowerCase();
@@ -779,6 +836,9 @@ export default function (pi: ExtensionAPI): void {
           break;
         case "search":
           await handleSearch(remainder, ctx);
+          break;
+        case "model":
+          await handleModel(remainder, ctx);
           break;
         case "status":
           await handleStatus(ctx);
