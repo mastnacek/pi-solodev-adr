@@ -18,7 +18,7 @@ Store concise, human-readable markdown records under `.pi/decisions/`:
 
 ```markdown
 # ADR-001: [Title]
-- **Date:** YYYY-MM-DD
+- **Date:** YYYY-MM-DD HH:mm:ss
 - **Context:** Why was this change needed? What problem or limitation triggered it?
 - **Decision:** What specific approach or workaround was chosen?
 - **Consequences:** What are the trade-offs, constraints, or follow-ups to remember?

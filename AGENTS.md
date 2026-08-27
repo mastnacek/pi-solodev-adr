@@ -14,7 +14,7 @@ All decisions MUST adhere to the minimalist format under `.pi/decisions/`:
 
 ```markdown
 # ADR-NNN: [Title]
-- **Date:** YYYY-MM-DD
+- **Date:** YYYY-MM-DD HH:mm:ss
 - **Context:** Why was this change needed? What limitation or pitfall triggered it?
 - **Decision:** What specific approach, pivot, or workaround was chosen?
 - **Consequences:** What are the trade-offs, constraints, or follow-ups to remember?

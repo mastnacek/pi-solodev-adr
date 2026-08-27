@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   formatADRMarkdown,
+  formatDate,
   getNextId,
   loadIndex,
   parseADRMarkdown,
@@ -32,11 +33,21 @@ test("slugify normalizes titles", () => {
   );
 });
 
-test("formatADRMarkdown and parseADRMarkdown roundtrip", () => {
+test("formatDate supports date and time formatting", () => {
+  const d = new Date("2026-08-27T10:55:30");
+  const formatted = formatDate(d);
+  assert.match(formatted, /^2026-08-27 \d{2}:\d{2}:\d{2}$/);
+
+  // Passthrough valid string
+  assert.equal(formatDate("2026-08-27 10:55:30"), "2026-08-27 10:55:30");
+  assert.equal(formatDate("2026-08-27"), "2026-08-27");
+});
+
+test("formatADRMarkdown and parseADRMarkdown roundtrip with time", () => {
   const original = {
     id: "ADR-001",
     title: "Spawn 32-bit worker for Notes 9",
-    date: "2026-03-30",
+    date: "2026-03-30 14:22:10",
     context: "Notes 9 C-API binary 32-bit only.",
     decision: "Spawn isolated 32-bit IPC worker subprocess.",
     consequences: "Slight IPC overhead (~2ms).",
@@ -52,7 +63,7 @@ test("formatADRMarkdown and parseADRMarkdown roundtrip", () => {
   assert.ok(parsed);
   assert.equal(parsed.id, "ADR-001");
   assert.equal(parsed.title, "Spawn 32-bit worker for Notes 9");
-  assert.equal(parsed.date, "2026-03-30");
+  assert.equal(parsed.date, "2026-03-30 14:22:10");
   assert.equal(parsed.status, "active");
   assert.equal(parsed.context, "Notes 9 C-API binary 32-bit only.");
   assert.equal(parsed.decision, "Spawn isolated 32-bit IPC worker subprocess.");

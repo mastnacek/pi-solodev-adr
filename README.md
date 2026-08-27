@@ -42,7 +42,7 @@ All decisions adhere to this format in `.pi/decisions/YYYY-MM-DD-ADR-NNN-<slug>.
 
 ```markdown
 # ADR-001: Bridge Notes 9 C-API with Node N-API
-- **Date:** 2026-03-30
+- **Date:** 2026-03-30 14:22:10
 - **Status:** active
 - **Context:** Notes 9 C-API binary 32-bit only; modern runner runs 64-bit Node.
 - **Decision:** Spawn isolated 32-bit IPC worker subprocess with named pipes.

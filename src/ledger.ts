@@ -88,16 +88,28 @@ export function slugify(text: string): string {
 }
 
 /**
- * Formats a date object or string into YYYY-MM-DD.
+ * Formats a date object or string into YYYY-MM-DD HH:mm:ss.
  */
 export function formatDate(dateInput?: string | Date): string {
+  const pad = (n: number) => n.toString().padStart(2, "0");
   if (dateInput instanceof Date) {
-    return dateInput.toISOString().split("T")[0];
+    const d = dateInput;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
-  if (dateInput && /^\d{4}-\d{2}-\d{2}$/.test(String(dateInput))) {
-    return String(dateInput);
+  if (typeof dateInput === "string" && dateInput.trim()) {
+    const str = dateInput.trim();
+    if (/^\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2}(:\d{2})?)?$/.test(str)) {
+      return str;
+    }
+    const parsed = new Date(str);
+    if (!Number.isNaN(parsed.getTime())) {
+      const d = parsed;
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+    return str;
   }
-  return new Date().toISOString().split("T")[0];
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 /**
@@ -298,7 +310,8 @@ export async function saveRecord(
   const date = formatDate(draft.date);
   const status: ADRStatus = draft.status || "active";
   const slug = slugify(draft.title) || "decision";
-  const fileName = `${date}-${id}-${slug}.md`;
+  const datePrefix = date.split(" ")[0].split("T")[0];
+  const fileName = `${datePrefix}-${id}-${slug}.md`;
   const filePath = join(dir, fileName);
 
   const record: ADRRecord = {
