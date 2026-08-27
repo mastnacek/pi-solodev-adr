@@ -11,7 +11,7 @@ export interface PluginConfig {
 }
 
 export const DEFAULT_CONFIG: PluginConfig = {
-  translateModel: "openrouter/google/gemini-2.5-flash",
+  translateModel: "default",
 };
 
 export const CONFIG_PATH = join(
@@ -49,21 +49,56 @@ export function saveConfig(cfg: Partial<PluginConfig>): void {
 }
 
 /**
- * Dynamic model discovery following standard Pi TUI search integration.
+ * Dynamic model discovery following native Pi ModelRegistry and settings.
+ * Discovers available providers and models without hardcoded lists.
  */
 export function getAvailableModels(
   ctx?: ExtensionContext | ExtensionCommandContext,
 ): string[] {
-  const models = new Set<string>([
-    "current",
-    "default",
-    "openrouter/google/gemini-2.5-flash",
-    "openrouter/google/gemini-3.1-flash-lite",
-    "openrouter/meta-llama/llama-3.3-70b-instruct",
-    "openrouter/anthropic/claude-3.5-haiku",
-  ]);
+  const models = new Set<string>(["current", "default"]);
 
-  // 1. Read models from ~/.pi/agent/models-store.json
+  // 1. Inspect runtime ModelRegistry (Pi's source of truth for active providers)
+  try {
+    const registry = (
+      ctx as {
+        modelRegistry?: {
+          getModels?: () => Array<{ provider?: string; id?: string }>;
+        };
+      }
+    )?.modelRegistry;
+    if (registry?.getModels) {
+      for (const m of registry.getModels()) {
+        if (m.provider && m.id) {
+          models.add(`${m.provider}/${m.id}`);
+        }
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  // 2. Read models from ~/.pi/agent/models.json (custom providers)
+  try {
+    const customModelsPath = join(homedir(), ".pi", "agent", "models.json");
+    if (existsSync(customModelsPath)) {
+      const data = JSON.parse(readFileSync(customModelsPath, "utf8")) as {
+        providers?: Record<string, { models?: Array<{ id?: string }> }>;
+      };
+      if (data.providers) {
+        for (const [provider, info] of Object.entries(data.providers)) {
+          if (Array.isArray(info?.models)) {
+            for (const m of info.models) {
+              if (m?.id) models.add(`${provider}/${m.id}`);
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  // 3. Read models from ~/.pi/agent/models-store.json (cached remote catalogs)
   try {
     const storePath = join(homedir(), ".pi", "agent", "models-store.json");
     if (existsSync(storePath)) {
@@ -84,7 +119,7 @@ export function getAvailableModels(
     // Non-fatal
   }
 
-  // 2. Read models from ~/.pi/agent/settings.json
+  // 4. Read models from ~/.pi/agent/settings.json
   try {
     const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
     if (existsSync(settingsPath)) {
@@ -103,26 +138,6 @@ export function getAvailableModels(
               if (id) models.add(`${provider}/${id}`);
             }
           }
-        }
-      }
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  // 3. Inspect ctx.modelRegistry
-  try {
-    const registry = (
-      ctx as {
-        modelRegistry?: {
-          getModels?: () => Array<{ provider?: string; id?: string }>;
-        };
-      }
-    )?.modelRegistry;
-    if (registry?.getModels) {
-      for (const m of registry.getModels()) {
-        if (m.provider && m.id) {
-          models.add(`${m.provider}/${m.id}`);
         }
       }
     }

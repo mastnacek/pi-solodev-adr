@@ -334,8 +334,7 @@ async function openReaderView(
               translationError = result.error || "Překlad selhal";
             }
           } catch (err: unknown) {
-            translationError =
-              err instanceof Error ? err.message : String(err);
+            translationError = err instanceof Error ? err.message : String(err);
           } finally {
             isTranslating = false;
             rebuild();

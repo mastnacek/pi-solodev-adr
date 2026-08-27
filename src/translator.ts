@@ -32,9 +32,7 @@ export interface TranslationResult {
 
 interface ModelRegistryLike {
   find?: (provider: string, modelId: string) => Model<Api> | undefined;
-  getApiKeyAndHeaders?: (
-    model: Model<Api>,
-  ) => Promise<{
+  getApiKeyAndHeaders?: (model: Model<Api>) => Promise<{
     ok: boolean;
     apiKey?: string;
     headers?: Record<string, string>;
@@ -80,10 +78,30 @@ export function parseTranslationPayload(
       const parsed = JSON.parse(str);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         const obj = parsed as Record<string, unknown>;
-        const title = extractStringField(obj, ["title", "Title", "nazev", "titulek"]);
-        const context = extractStringField(obj, ["context", "Context", "kontext", "duvod"]);
-        const decision = extractStringField(obj, ["decision", "Decision", "rozhodnuti", "reseni"]);
-        const consequences = extractStringField(obj, ["consequences", "Consequences", "dusledky", "dopady"]);
+        const title = extractStringField(obj, [
+          "title",
+          "Title",
+          "nazev",
+          "titulek",
+        ]);
+        const context = extractStringField(obj, [
+          "context",
+          "Context",
+          "kontext",
+          "duvod",
+        ]);
+        const decision = extractStringField(obj, [
+          "decision",
+          "Decision",
+          "rozhodnuti",
+          "reseni",
+        ]);
+        const consequences = extractStringField(obj, [
+          "consequences",
+          "Consequences",
+          "dusledky",
+          "dopady",
+        ]);
 
         if (title && context && decision && consequences) {
           return { title, context, decision, consequences };
@@ -154,15 +172,22 @@ export function parseTranslationFromMarkdown(
 }
 
 /**
- * Resolves configured model from registry, settings, or current session.
+ * Resolves configured model dynamically through Pi's ModelRegistry and settings.
+ * Completely provider-agnostic without hardcoded endpoints or candidate lists.
  */
 export async function resolveModel(
   ctx: ExtensionContext | ExtensionCommandContext,
 ): Promise<Model<Api> | undefined> {
   const config = loadConfig();
   const rawSetting = (config.translateModel || "default").trim();
-  const registry = (ctx as { modelRegistry?: ModelRegistryLike })
-    ?.modelRegistry;
+  const registry = (
+    ctx as {
+      modelRegistry?: {
+        find?: (provider: string, modelId: string) => Model<Api> | undefined;
+        getModels?: () => Array<Model<Api>>;
+      };
+    }
+  )?.modelRegistry;
 
   // 1. "current" setting -> use active session model
   if (rawSetting.toLowerCase() === "current") {
@@ -193,47 +218,32 @@ export async function resolveModel(
   }
 
   // 3. Specific "<provider>/<modelId>" setting (e.g. "google/gemini-3.7-flash")
-  if (rawSetting.includes("/")) {
+  if (rawSetting.includes("/") && registry?.find) {
     const slash = rawSetting.indexOf("/");
     const provider = rawSetting.slice(0, slash);
     const modelId = rawSetting.slice(slash + 1);
-    if (registry?.find) {
-      const found = registry.find(provider, modelId);
-      if (found) return found;
-    }
-    // Also try full rawSetting as modelId under openrouter
-    if (registry?.find && provider !== "openrouter") {
-      const foundOR = registry.find("openrouter", rawSetting);
-      if (foundOR) return foundOR;
-    }
-  } else if (registry?.find) {
-    // Bare model ID (e.g. "gemini-3.7-flash") -> search providers
-    for (const prov of [
-      "google",
-      "openrouter",
-      "openai",
-      "anthropic",
-      "moonshotai",
-    ]) {
-      const found = registry.find(prov, rawSetting);
-      if (found) return found;
-    }
+    const found = registry.find(provider, modelId);
+    if (found) return found;
   }
 
-  // 4. Fallback to active session model if available
+  // 4. Search dynamic models list from registry by model ID
+  if (registry?.getModels) {
+    const all = registry.getModels();
+    const match = all.find(
+      (m) => m.id === rawSetting || `${m.provider}/${m.id}` === rawSetting,
+    );
+    if (match) return match;
+  }
+
+  // 5. Fallback to active session model if available
   if ((ctx as { model?: Model<Api> })?.model) {
     return (ctx as { model?: Model<Api> }).model;
   }
 
-  // 5. Fallback: try finding standard candidates
-  const fallbacks = [
-    { provider: "google", id: "gemini-3.7-flash" },
-    { provider: "google", id: "gemini-2.5-flash" },
-    { provider: "openrouter", id: "google/gemini-2.5-flash" },
-  ];
-  for (const fb of fallbacks) {
-    const found = registry?.find?.(fb.provider, fb.id);
-    if (found) return found;
+  // 6. Final fallback: first available model in registry
+  if (registry?.getModels) {
+    const all = registry.getModels();
+    if (all.length > 0 && all[0]) return all[0];
   }
 
   return undefined;
@@ -309,7 +319,12 @@ export async function translateRecordToCzech(
 
     if (textContent) {
       const parsed = parseTranslationPayload(textContent);
-      if (parsed?.title && parsed.context && parsed.decision && parsed.consequences) {
+      if (
+        parsed?.title &&
+        parsed.context &&
+        parsed.decision &&
+        parsed.consequences
+      ) {
         const translated: ADRRecord = {
           ...record,
           title: parsed.title.trim(),
