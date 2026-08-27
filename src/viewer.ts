@@ -11,9 +11,9 @@ export interface StyleTheme {
 
 // TrueColor Neon Pink & Cyber Glow Palette with ANSI 256 fallback
 const NEON_PINK = "\x1b[38;2;255;113;206m"; // Neon hot pink
-const NEON_CYAN = "\x1b[38;2;1;205;254m";   // Neon electric cyan
-const NEON_GREEN = "\x1b[38;2;5;255;161m";  // Neon emerald green
-const NEON_GOLD = "\x1b[38;2;255;211;25m";  // Neon amber gold
+const NEON_CYAN = "\x1b[38;2;1;205;254m"; // Neon electric cyan
+const NEON_GREEN = "\x1b[38;2;5;255;161m"; // Neon emerald green
+const NEON_GOLD = "\x1b[38;2;255;211;25m"; // Neon amber gold
 const NEON_CORAL = "\x1b[38;2;255;85;115m"; // Neon coral red
 const NEON_VIOLET = "\x1b[38;2;185;103;255m"; // Neon electric violet
 const GLOW_DIVIDER = "\x1b[38;2;130;70;170m"; // Subtle glowing purple divider
@@ -307,9 +307,7 @@ export function highlightADRMarkdown(
     }
 
     // Inline backticks
-    return line.replace(/`([^`]+)`/g, (_m, code) =>
-      pinkGlow(`\`${code}\``),
-    );
+    return line.replace(/`([^`]+)`/g, (_m, code) => pinkGlow(`\`${code}\``));
   });
 
   return highlighted.join("\n");
@@ -347,9 +345,7 @@ export function renderDirectoryHeader(
   ];
 }
 
-function getStatusFormatted(
-  status: ADRStatus,
-): { text: string; col: string } {
+function getStatusFormatted(status: ADRStatus): { text: string; col: string } {
   if (status === "active") {
     return { text: "● active    ", col: greenGlow("● active    ") };
   }
