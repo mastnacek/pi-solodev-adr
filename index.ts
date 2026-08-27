@@ -17,13 +17,16 @@ import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { detectArchitecturalChange } from "./src/detector.js";
 import { injectDoctrineIntoSystemPrompt } from "./src/injector.js";
+import { relative } from "node:path";
 import {
   ensureDecisionsDir,
+  findProjectRoot,
   formatADRMarkdown,
   getDecisionsDir,
   getIndexPath,
   loadIndex,
   readRecord,
+  resolveTargetRoot,
   saveRecord,
   searchRecords,
 } from "./src/ledger.js";
@@ -72,6 +75,11 @@ const SUBCOMMANDS = [
     label: "model [name]",
     description:
       "Select or display translation model (e.g. openrouter/google/gemini-2.5-flash)",
+  },
+  {
+    value: "routing",
+    label: "routing [on|off]",
+    description: "Toggle auto-routing ADRs to nearest subproject root",
   },
   {
     value: "status",
@@ -135,14 +143,45 @@ async function handleBeforeAgentStart(
   }
 }
 
+export function extractTouchedFiles(branch: readonly unknown[]): string[] {
+  const files: string[] = [];
+  for (const entry of branch) {
+    if (entry && typeof entry === "object") {
+      const rec = entry as Record<string, unknown>;
+      if (
+        rec.type === "tool_call" ||
+        rec.type === "tool_execution_start" ||
+        rec.type === "tool_execution_end"
+      ) {
+        const payload = (rec.args || rec.input) as
+          | Record<string, unknown>
+          | undefined;
+        if (typeof payload?.path === "string") files.push(payload.path);
+        if (typeof payload?.file === "string") files.push(payload.file);
+        if (Array.isArray(payload?.paths)) {
+          for (const p of payload.paths) {
+            if (typeof p === "string") files.push(p);
+          }
+        }
+      }
+    }
+  }
+  return Array.from(new Set(files));
+}
+
 async function promptAndSaveDraft(
   ctx: ExtensionContext,
   draft: ADRDraft,
+  targetRoot = ctx.cwd,
 ): Promise<void> {
   const configDir = getConfigDir();
-  const index = await getOrLoadIndex(ctx.cwd, configDir);
+  const index = await getOrLoadIndex(targetRoot, configDir);
+  const relPath = relative(ctx.cwd, targetRoot).replace(/\\/g, "/") || ".";
+  const displayLocation =
+    relPath === "." ? "docs/adr/" : `${relPath}/docs/adr/`;
 
   const preview = [
+    `Target: ${displayLocation}`,
     `Title: ${draft.title}`,
     `Context: ${draft.context}`,
     `Decision: ${draft.decision}`,
@@ -150,7 +189,7 @@ async function promptAndSaveDraft(
   ].join("\n");
 
   const choices = [
-    "Record decision in docs/adr/",
+    `Record decision in ${displayLocation}`,
     "Edit before recording",
     "Dismiss",
   ];
@@ -161,7 +200,7 @@ async function promptAndSaveDraft(
   );
 
   if (choice === choices[0]) {
-    const saved = await saveRecord(ctx.cwd, draft, configDir);
+    const saved = await saveRecord(targetRoot, draft, configDir);
     invalidateCache();
     ctx.ui.notify(`Recorded ${saved.id}: ${saved.title}`, "info");
     ctx.ui.setStatus(
@@ -191,7 +230,7 @@ async function promptAndSaveDraft(
       status: "active",
     };
 
-    const saved = await saveRecord(ctx.cwd, editedDraft, configDir);
+    const saved = await saveRecord(targetRoot, editedDraft, configDir);
     invalidateCache();
     ctx.ui.notify(`Recorded ${saved.id}: ${saved.title}`, "info");
     ctx.ui.setStatus(
@@ -205,10 +244,18 @@ async function handleAgentSettled(ctx: ExtensionContext): Promise<void> {
   if (!ctx.hasUI) return;
 
   try {
-    const configDir = getConfigDir();
-    const index = await getOrLoadIndex(ctx.cwd, configDir);
-
+    const config = loadConfig();
     const branch = ctx.sessionManager.getBranch();
+    const touchedFiles = extractTouchedFiles(branch);
+    const targetRoot = resolveTargetRoot(
+      ctx.cwd,
+      touchedFiles,
+      config.subprojectRouting,
+    );
+
+    const configDir = getConfigDir();
+    const index = await getOrLoadIndex(targetRoot, configDir);
+
     const messages = branch
       .map((entry) => (entry.type === "message" ? entry.message : null))
       .filter((m): m is NonNullable<typeof m> => m !== null);
@@ -218,7 +265,7 @@ async function handleAgentSettled(ctx: ExtensionContext): Promise<void> {
       return;
     }
 
-    await promptAndSaveDraft(ctx, detection.draft);
+    await promptAndSaveDraft(ctx, detection.draft, targetRoot);
   } catch {
     // Non-blocking detection failure
   }
@@ -573,6 +620,45 @@ async function handleModel(
   ctx.ui.notify(`Translation model set to: ${pinkGlow(cleanModel)}`, "info");
 }
 
+async function handleRouting(
+  remainder: string,
+  ctx: ExtensionCommandContext,
+): Promise<void> {
+  const config = loadConfig();
+  const lower = remainder.trim().toLowerCase();
+
+  if (!lower) {
+    const stateText = config.subprojectRouting
+      ? greenGlow("ON (auto-routes ADRs to nearest subproject root)")
+      : goldGlow("OFF (always uses current working directory)");
+    ctx.ui.notify(
+      `Subproject routing: ${stateText}\n\nToggle with: /adr routing on | /adr routing off`,
+      "info",
+    );
+    return;
+  }
+
+  if (lower === "on" || lower === "true" || lower === "enable") {
+    saveConfig({ subprojectRouting: true });
+    ctx.ui.notify(
+      `Subproject routing enabled ${greenGlow("[ON]")}: ADRs auto-target detected subproject repositories.`,
+      "info",
+    );
+    return;
+  }
+
+  if (lower === "off" || lower === "false" || lower === "disable") {
+    saveConfig({ subprojectRouting: false });
+    ctx.ui.notify(
+      `Subproject routing disabled ${goldGlow("[OFF]")}: ADRs will always save to current session root.`,
+      "info",
+    );
+    return;
+  }
+
+  ctx.ui.notify("Usage: `/adr routing [on|off]`", "warning");
+}
+
 async function handleStatus(ctx: ExtensionCommandContext): Promise<void> {
   const configDir = getConfigDir();
   const config = loadConfig();
@@ -586,6 +672,7 @@ async function handleStatus(ctx: ExtensionCommandContext): Promise<void> {
     `- **Directory:** ${decisionsDir}`,
     `- **Index File:** ${indexPath}`,
     `- **Translation Model:** ${config.translateModel}`,
+    `- **Subproject Routing:** ${config.subprojectRouting ? "ON (auto-detect)" : "OFF (cwd)"}`,
     `- **Total Records:** ${index.records.length}`,
     `- **Active Constraints:** ${activeCount}`,
     `- **Last Updated:** ${index.lastUpdated || "Never"}`,
@@ -606,6 +693,7 @@ function handleHelp(ctx: ExtensionCommandContext): void {
     "- `/adr show <id> [--read|--raw]` — Display decision in clean Reading Mode or Syntax Highlighting.",
     "- `/adr search <query>` — Keyword search across historical constraints.",
     "- `/adr model [model]` — Select or display translation model override.",
+    "- `/adr routing [on|off]` — Toggle auto-routing ADRs to nearest subproject root.",
     "- `/adr status` — Show active ADR counts and storage metrics.",
     "- `/adr help` — Display this guide.",
     "",
@@ -659,6 +747,26 @@ async function getCompletions(
     } catch {
       return null;
     }
+  }
+
+  if (subcommand.toLowerCase() === "routing") {
+    const items = [
+      {
+        value: "routing on",
+        label: "routing on",
+        description: "Enable auto-routing to nearest subproject root",
+      },
+      {
+        value: "routing off",
+        label: "routing off",
+        description: "Disable auto-routing (always save to session root)",
+      },
+    ];
+    const query = (argPrefix || "").trim().toLowerCase();
+    const matches = items.filter(
+      (i) => !query || i.value.toLowerCase().includes(query),
+    );
+    return matches.length > 0 ? matches : null;
   }
 
   if (subcommand.toLowerCase() === "show") {
@@ -852,6 +960,9 @@ export default function (pi: ExtensionAPI): void {
           break;
         case "model":
           await handleModel(remainder, ctx);
+          break;
+        case "routing":
+          await handleRouting(remainder, ctx);
           break;
         case "status":
           await handleStatus(ctx);

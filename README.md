@@ -62,6 +62,7 @@ All decisions adhere to this format in `docs/adr/YYYY-MM-DD-ADR-NNN-<slug>.md`:
 | `/adr new <title>` | Interactive wizard to manually draft and record a new ADR. |
 | `/adr search <query>` | Fast keyword search across historical constraints and titles. |
 | `/adr model [name]` | Configure or view the translation model (e.g. `openrouter/google/gemini-2.5-flash`). |
+| `/adr routing [on\|off]` | Toggle auto-routing ADRs to nearest subproject root repository. |
 | `/adr status` | Report radar status, active constraints count, and storage paths. |
 | `/adr help` | Display complete command and MADR schema reference. |
 

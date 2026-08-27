@@ -327,7 +327,11 @@ export async function translateRecordToCzech(
       const effectiveModel: Model<Api> = auth.baseUrl
         ? { ...model, baseUrl: auth.baseUrl }
         : model;
-      response = await completeSimple(effectiveModel, llmContext, requestOptions);
+      response = await completeSimple(
+        effectiveModel,
+        llmContext,
+        requestOptions,
+      );
     }
 
     if (response.stopReason === "error") {

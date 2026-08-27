@@ -8,10 +8,12 @@ import type {
 
 export interface PluginConfig {
   translateModel: string;
+  subprojectRouting: boolean;
 }
 
 export const DEFAULT_CONFIG: PluginConfig = {
   translateModel: "default",
+  subprojectRouting: true,
 };
 
 export const CONFIG_PATH = join(
@@ -29,6 +31,10 @@ export function loadConfig(): PluginConfig {
       return {
         ...DEFAULT_CONFIG,
         ...parsed,
+        subprojectRouting:
+          typeof parsed.subprojectRouting === "boolean"
+            ? parsed.subprojectRouting
+            : DEFAULT_CONFIG.subprojectRouting,
       };
     }
   } catch {

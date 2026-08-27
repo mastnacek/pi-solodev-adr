@@ -4,12 +4,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  findProjectRoot,
   formatADRMarkdown,
   formatDate,
   getNextId,
   loadIndex,
   parseADRMarkdown,
   readRecord,
+  resolveTargetRoot,
   saveRecord,
   searchRecords,
   slugify,
@@ -114,6 +116,57 @@ test("saveRecord, readRecord, and searchRecords work with atomic storage", async
     const searchMatches = await searchRecords(tempDir, "PhotoPicker", ".pi");
     assert.equal(searchMatches.length, 1);
     assert.equal(searchMatches[0].id, "ADR-002");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("findProjectRoot detects subproject boundaries", async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), "pi-solo-radar-sub-"));
+  const subproject = join(tempDir, "sub-pkg");
+  const nestedSrc = join(subproject, "src", "nested");
+
+  try {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    await mkdir(nestedSrc, { recursive: true });
+    await writeFile(join(subproject, "package.json"), "{}");
+
+    // Scan from nested file should find subproject root
+    const found = findProjectRoot(join(nestedSrc, "index.ts"), tempDir);
+    assert.equal(found, subproject);
+
+    // Fallback when no boundary exists
+    const fallback = findProjectRoot(join(tempDir, "unknown.ts"), tempDir);
+    assert.equal(fallback, tempDir);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("resolveTargetRoot picks dominant subproject root", async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), "pi-solo-radar-target-"));
+  const subA = join(tempDir, "plugin-a");
+  const subB = join(tempDir, "plugin-b");
+
+  try {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    await mkdir(join(subA, "src"), { recursive: true });
+    await mkdir(join(subB, "src"), { recursive: true });
+    await writeFile(join(subA, "package.json"), "{}");
+    await writeFile(join(subB, "package.json"), "{}");
+
+    const files = [
+      join(subA, "src", "file1.ts"),
+      join(subA, "src", "file2.ts"),
+      join(subB, "src", "file3.ts"),
+    ];
+
+    const target = resolveTargetRoot(tempDir, files, true);
+    assert.equal(target, subA);
+
+    // When disabled, always returns tempDir
+    const disabledTarget = resolveTargetRoot(tempDir, files, false);
+    assert.equal(disabledTarget, tempDir);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
