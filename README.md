@@ -64,11 +64,13 @@ All decisions adhere to this format in `docs/adr/YYYY-MM-DD-ADR-NNN-<slug>.md`:
 | `/adr status` | Report radar status, active constraints count, and storage paths. |
 | `/adr help` | Display complete command and MADR schema reference. |
 
-### 📖 Reading Mode vs. Syntax Highlighting
+### 📖 Reading Mode, Syntax Highlighting & Czech Translation
 
 - **Clean Reading Mode (Default):** Strips raw markdown syntax elements (`#`, `**`, `` ` ``, bullets) and applies terminal typography (clean section headers, status badges, bullet glyphs).
 - **Syntax Highlighting Mode:** Colorizes raw markdown tokens and MADR fields.
-- **Interactive Toggle:** While viewing an ADR in the Pi TUI, press `m` or `r` to toggle Reading Mode on/off.
+- **Interactive Toggles:**
+  - Press **`m`** or **`r`** to toggle Reading Mode / Raw Syntax Mode.
+  - Press **`t`** to perform an on-demand literal translation to Czech (`[🇨🇿 Čeština]`) via OpenRouter or switch back to English (`[🇬🇧 English]`). Translated records are cached in memory for zero-latency toggling.
 
 ### Autonomous Agent Tools (`LLM-Callable`)
 

@@ -41,6 +41,7 @@ import {
   renderStatusBadge,
   violetGlow,
 } from "./src/viewer.js";
+import { translateRecordToCzech } from "./src/translator.js";
 
 const SUBCOMMANDS = [
   {
@@ -217,19 +218,23 @@ async function handleAgentSettled(ctx: ExtensionContext): Promise<void> {
 
 async function openReaderView(
   ctx: ExtensionCommandContext,
-  record: ADRRecord,
+  initialRecord: ADRRecord,
   initialReadingMode = true,
 ): Promise<void> {
   if (!ctx.hasUI) {
     const text = initialReadingMode
-      ? formatReadingMode(record)
-      : highlightADRMarkdown(record);
+      ? formatReadingMode(initialRecord)
+      : highlightADRMarkdown(initialRecord);
     ctx.ui.notify(text, "info");
     return;
   }
 
   await ctx.ui.custom<void>((tui, theme, _kb, done) => {
     let readingMode = initialReadingMode;
+    let isCzech = false;
+    let isTranslating = false;
+    const currentRecord = initialRecord;
+    let translatedRecord: ADRRecord | null = null;
     const container = new Container();
 
     const rebuild = () => {
@@ -241,19 +246,32 @@ async function openReaderView(
       const modeBadge = readingMode
         ? greenGlow("[● Reading Mode (Clean)]")
         : goldGlow("[⚡ Syntax Highlighting (Raw)]");
-      const titleLine = `${pinkGlow(theme.bold(`◈ ${record.id}: ${record.title}`))}  ${modeBadge}`;
+      let langBadge = cyanGlow("[🇬🇧 English (Original)]");
+      if (isTranslating) {
+        langBadge = violetGlow("[⏳ Překládám...]");
+      } else if (isCzech) {
+        langBadge = pinkGlow("[🇨🇿 Čeština (Doslovný překlad)]");
+      }
+
+      const activeRecord =
+        isCzech && translatedRecord ? translatedRecord : currentRecord;
+      const titleLine = `${pinkGlow(theme.bold(`◈ ${activeRecord.id}: ${activeRecord.title}`))}  ${modeBadge}  ${langBadge}`;
       container.addChild(new Text(titleLine, 1, 0));
       container.addChild(new Spacer(1));
 
       // Body text
       const content = readingMode
-        ? formatReadingMode(record, theme)
-        : highlightADRMarkdown(record, theme);
+        ? formatReadingMode(activeRecord, theme)
+        : highlightADRMarkdown(activeRecord, theme);
       container.addChild(new Text(content, 1, 0));
 
       container.addChild(new Spacer(1));
       container.addChild(
-        new Text(violetGlow("m / r: toggle reading mode • esc: close"), 1, 0),
+        new Text(
+          violetGlow("m/r: formatting • t: přeložit (CS/EN) • esc: close"),
+          1,
+          0,
+        ),
       );
       container.addChild(new DynamicBorder((s: string) => pinkGlow(s)));
     };
@@ -266,11 +284,40 @@ async function openReaderView(
         rebuild();
         container.invalidate();
       },
-      handleInput: (data) => {
+      handleInput: async (data) => {
         if (matchesKey(data, "m") || matchesKey(data, "r")) {
           readingMode = !readingMode;
           rebuild();
           tui.requestRender();
+        } else if (matchesKey(data, "t")) {
+          if (isCzech) {
+            isCzech = false;
+            rebuild();
+            tui.requestRender();
+            return;
+          }
+
+          if (translatedRecord) {
+            isCzech = true;
+            rebuild();
+            tui.requestRender();
+            return;
+          }
+
+          isTranslating = true;
+          rebuild();
+          tui.requestRender();
+
+          try {
+            translatedRecord = await translateRecordToCzech(currentRecord, ctx);
+            isCzech = true;
+          } catch {
+            // translation failed, stay on original
+          } finally {
+            isTranslating = false;
+            rebuild();
+            tui.requestRender();
+          }
         } else if (matchesKey(data, Key.escape) || matchesKey(data, "q")) {
           done();
         }
