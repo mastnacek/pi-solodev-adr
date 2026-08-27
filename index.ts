@@ -52,44 +52,44 @@ const SUBCOMMANDS = [
   {
     value: "list",
     label: "list",
-    description: "List all recorded ADR decisions and statuses",
+    description: "Zobrazit přehled a tabulku všech ADR záznamů",
   },
   {
     value: "new",
-    label: "new <title>",
-    description: "Interactively draft and save a new ADR",
+    label: "new <titulek>",
+    description: "Interaktivně vytvořit a uložit nový 5-řádkový MADR záznam",
   },
   {
     value: "show",
     label: "show <id> [--read|--raw]",
     description:
-      "Display decision in clean Reading Mode or Syntax Highlighting",
+      "Zobrazit detail rozhodnutí v režimu čtení nebo se zvýrazněním",
   },
   {
     value: "search",
-    label: "search <term>",
-    description: "Keyword search across historical decisions",
+    label: "search <dotaz>",
+    description: "Vyhledávat v historii architektonických rozhodnutí",
   },
   {
     value: "model",
-    label: "model [name]",
+    label: "model [název]",
     description:
-      "Select or display translation model (e.g. openrouter/google/gemini-2.5-flash)",
+      "Nastavit nebo zobrazit model pro překlad (např. google/gemini-3.7-flash)",
   },
   {
     value: "routing",
     label: "routing [on|off]",
-    description: "Toggle auto-routing ADRs to nearest subproject root",
+    description: "Přepnout automatické směrování ADR do nejbližšího podprojektu",
   },
   {
     value: "status",
     label: "status",
-    description: "Show radar tracking status and storage metrics",
+    description: "Zobrazit stav radaru, počet aktivních pravidel a úložiště",
   },
   {
     value: "help",
     label: "help",
-    description: "Display command reference and MADR guidelines",
+    description: "Zobrazit přehled příkazů a nápovědu v češtině",
   },
 ];
 
@@ -493,41 +493,47 @@ async function handleNew(
   ctx: ExtensionCommandContext,
 ): Promise<void> {
   const configDir = getConfigDir();
-  const defaultTitle = remainder || "New Architectural Decision";
-  const title = (await ctx.ui.input("ADR Title:", defaultTitle))?.trim();
+  const defaultTitle = remainder || "Nové architektonické rozhodnutí";
+  const title = (await ctx.ui.input("Titulek ADR:", defaultTitle))?.trim();
   if (!title) {
-    ctx.ui.notify("ADR creation cancelled (empty title).", "warning");
+    ctx.ui.notify("Vytváření ADR zrušeno (prázdný titulek).", "warning");
     return;
   }
 
   const context =
     (
-      await ctx.ui.input("Context (Why was this change needed?):", "")
+      await ctx.ui.input(
+        "Kontext (Proč byla tato změna nutná? Jaké omezení ji vyvolalo?):",
+        "",
+      )
     )?.trim() || "";
   const decision =
     (
-      await ctx.ui.input("Decision (What specific approach was chosen?):", "")
+      await ctx.ui.input(
+        "Rozhodnutí (Jaký konkrétní přístup nebo workaround byl zvolen?):",
+        "",
+      )
     )?.trim() || "";
   const consequences =
     (
       await ctx.ui.input(
-        "Consequences (What are trade-offs / follow-ups?):",
+        "Důsledky (Jaké jsou kompromisy, limity a návazné kroky?):",
         "",
       )
     )?.trim() || "";
 
   const draft: ADRDraft = {
     title,
-    context: context || "Documented architectural decision.",
+    context: context || "Zaznamenané architektonické rozhodnutí.",
     decision: decision || title,
-    consequences: consequences || "Maintain decision to prevent regressions.",
+    consequences: consequences || "Dodržovat rozhodnutí pro prevenci regresí.",
     status: "active",
   };
 
   const saved = await saveRecord(ctx.cwd, draft, configDir);
   invalidateCache();
   ctx.ui.notify(
-    `Created ${saved.id}: ${saved.title}\nSaved to ${saved.file}`,
+    `Vytvořeno ${saved.id}: ${saved.title}\nUloženo do ${saved.file}`,
     "info",
   );
 }
@@ -545,7 +551,7 @@ async function handleShow(
 
   if (!idQuery) {
     ctx.ui.notify(
-      "Usage: `/adr show <id> [--read | --raw]` (e.g. `/adr show ADR-001`)",
+      "Použití: `/adr show <id> [--read | --raw]` (např. `/adr show ADR-001`)",
       "warning",
     );
     return;
@@ -558,7 +564,7 @@ async function handleShow(
     configDir,
   );
   if (!record) {
-    ctx.ui.notify(`ADR not found: "${idQuery}"`, "error");
+    ctx.ui.notify(`ADR nenalezeno: "${idQuery}"`, "error");
     return;
   }
 
@@ -571,19 +577,19 @@ async function handleSearch(
   ctx: ExtensionCommandContext,
 ): Promise<void> {
   if (!remainder) {
-    ctx.ui.notify("Usage: `/adr search <keyword>`", "warning");
+    ctx.ui.notify("Použití: `/adr search <hledaný_výraz>`", "warning");
     return;
   }
 
   const configDir = getConfigDir();
   const results = await searchRecords(ctx.cwd, remainder, configDir);
   if (results.length === 0) {
-    ctx.ui.notify(`No ADR records matching "${remainder}".`, "info");
+    ctx.ui.notify(`Žádné ADR záznamy neodpovídají výrazu "${remainder}".`, "info");
     return;
   }
 
   const lines = [
-    `# ADR Search Results for "${remainder}" (${results.length} matches):`,
+    `# Výsledky vyhledávání ADR pro "${remainder}" (${results.length} nálezů):`,
     "",
   ];
   for (const match of results) {
@@ -606,7 +612,7 @@ async function handleModel(
   if (!cleanModel) {
     const available = getAvailableModels(ctx);
     ctx.ui.notify(
-      `Current translation model: ${pinkGlow(config.translateModel || "openrouter/google/gemini-2.5-flash")}\n\nAvailable models:\n` +
+      `Aktuální model pro překlad: ${pinkGlow(config.translateModel || "default")}\n\nDostupné modely:\n` +
         available
           .slice(0, 10)
           .map((m) => `  - /adr model ${m}`)
@@ -617,7 +623,7 @@ async function handleModel(
   }
 
   saveConfig({ translateModel: cleanModel });
-  ctx.ui.notify(`Translation model set to: ${pinkGlow(cleanModel)}`, "info");
+  ctx.ui.notify(`Model pro překlad nastaven na: ${pinkGlow(cleanModel)}`, "info");
 }
 
 async function handleRouting(
@@ -629,10 +635,10 @@ async function handleRouting(
 
   if (!lower) {
     const stateText = config.subprojectRouting
-      ? greenGlow("ON (auto-routes ADRs to nearest subproject root)")
-      : goldGlow("OFF (always uses current working directory)");
+      ? greenGlow("ZAPNUTO (automaticky ukládá do kořene podprojektu)")
+      : goldGlow("VYPNUTO (vždy ukládá do aktuální pracovní složky)");
     ctx.ui.notify(
-      `Subproject routing: ${stateText}\n\nToggle with: /adr routing on | /adr routing off`,
+      `Směrování podprojektů: ${stateText}\n\nPřepínání: /adr routing on | /adr routing off`,
       "info",
     );
     return;
@@ -641,7 +647,7 @@ async function handleRouting(
   if (lower === "on" || lower === "true" || lower === "enable") {
     saveConfig({ subprojectRouting: true });
     ctx.ui.notify(
-      `Subproject routing enabled ${greenGlow("[ON]")}: ADRs auto-target detected subproject repositories.`,
+      `Směrování podprojektů zapnuto ${greenGlow("[ZAPNUTO]")}: ADR se automaticky ukládají do zjištěného repozitáře podprojektu.`,
       "info",
     );
     return;
@@ -650,13 +656,13 @@ async function handleRouting(
   if (lower === "off" || lower === "false" || lower === "disable") {
     saveConfig({ subprojectRouting: false });
     ctx.ui.notify(
-      `Subproject routing disabled ${goldGlow("[OFF]")}: ADRs will always save to current session root.`,
+      `Směrování podprojektů vypnuto ${goldGlow("[VYPNUTO]")}: ADR se budou vždy ukládat do kořene aktuální session.`,
       "info",
     );
     return;
   }
 
-  ctx.ui.notify("Usage: `/adr routing [on|off]`", "warning");
+  ctx.ui.notify("Použití: `/adr routing [on|off]`", "warning");
 }
 
 async function handleStatus(ctx: ExtensionCommandContext): Promise<void> {
@@ -668,14 +674,14 @@ async function handleStatus(ctx: ExtensionCommandContext): Promise<void> {
   const activeCount = index.records.filter((r) => r.status === "active").length;
 
   const lines = [
-    "# pi-solo-radar Status",
-    `- **Directory:** ${decisionsDir}`,
-    `- **Index File:** ${indexPath}`,
-    `- **Translation Model:** ${config.translateModel}`,
-    `- **Subproject Routing:** ${config.subprojectRouting ? "ON (auto-detect)" : "OFF (cwd)"}`,
-    `- **Total Records:** ${index.records.length}`,
-    `- **Active Constraints:** ${activeCount}`,
-    `- **Last Updated:** ${index.lastUpdated || "Never"}`,
+    "# Stav pi-solo-radar",
+    `- **Složka:** ${decisionsDir}`,
+    `- **Index soubor:** ${indexPath}`,
+    `- **Model pro překlad:** ${config.translateModel}`,
+    `- **Směrování podprojektů:** ${config.subprojectRouting ? "ZAPNUTO (auto-detekce)" : "VYPNUTO (cwd)"}`,
+    `- **Celkem záznamů:** ${index.records.length}`,
+    `- **Aktivní pravidla:** ${activeCount}`,
+    `- **Poslední aktualizace:** ${index.lastUpdated || "Nikdy"}`,
   ];
 
   ctx.ui.notify(lines.join("\n"), "info");
@@ -683,28 +689,28 @@ async function handleStatus(ctx: ExtensionCommandContext): Promise<void> {
 
 function handleHelp(ctx: ExtensionCommandContext): void {
   const lines = [
-    "# pi-solo-radar — Command Reference",
+    "# pi-solo-radar — Přehled příkazů a nápověda",
     "",
-    "Autonomous Architectural Decision Record (ADR) Ledger for Solo Engineers.",
+    "Autonomní správce architektonických rozhodnutí (ADR) pro solo vývojáře.",
     "",
-    "### Available Commands:",
-    "- `/adr list` — Interactive TUI directory explorer / decision ledger.",
-    "- `/adr new <title>` — Interactively draft and save a 5-line MADR.",
-    "- `/adr show <id> [--read|--raw]` — Display decision in clean Reading Mode or Syntax Highlighting.",
-    "- `/adr search <query>` — Keyword search across historical constraints.",
-    "- `/adr model [model]` — Select or display translation model override.",
-    "- `/adr routing [on|off]` — Toggle auto-routing ADRs to nearest subproject root.",
-    "- `/adr status` — Show active ADR counts and storage metrics.",
-    "- `/adr help` — Display this guide.",
+    "### Dostupné příkazy:",
+    "- `/adr list` — Interaktivní TUI průzkumník a tabulka architektonických rozhodnutí.",
+    "- `/adr new <titulek>` — Interaktivní průvodce pro vytvoření nového MADR záznamu.",
+    "- `/adr show <id> [--read|--raw]` — Zobrazit konkrétní ADR v režimu čtení nebo se zvýrazněním.",
+    "- `/adr search <dotaz>` — Rychlé vyhledávání v historii rozhodnutí a mantinelů.",
+    "- `/adr model [model]` — Zobrazit nebo nastavit model pro překlad (např. `google/gemini-3.7-flash`).",
+    "- `/adr routing [on|off]` — Zapnout/vypnout automatické ukládání do kořene podprojektu.",
+    "- `/adr status` — Zobrazit stav radaru, počet aktivních pravidel a cesty.",
+    "- `/adr help` — Zobrazit tuto nápovědu.",
     "",
-    "### Reading Mode & Translation:",
-    "- In Reading Mode, markdown formatting markers (`#`, `**`, `` ` ``, bullets) are stripped for clean reading.",
-    "- Press `m` while viewing an ADR to toggle between clean reading mode and raw syntax mode.",
-    "- Press `t` or `l` while viewing an ADR to toggle between Czech translation and English original.",
+    "### Režim čtení a překlad:",
+    "- **Režim čtení (výchozí):** Odstraní surové znaky formátování (`#`, `**`, `` ` ``, odrážky) pro čisté čtení.",
+    "- Stisknutím **`m`** (nebo **`r`**) v prohlížeči přepnete mezi čistým textem a surovým Markdownem.",
+    "- Stisknutím **`t`** (nebo **`l`**) spustíte doslovný překlad do češtiny (smyčka CS/EN).",
     "",
-    "### 5-Line MADR Format:",
-    "Stored under `docs/adr/YYYY-MM-DD-ADR-NNN-<slug>.md` with sections:",
-    "`Context`, `Decision`, `Consequences`.",
+    "### 5-řádkový MADR formát:",
+    "Ukládá se do `docs/adr/YYYY-MM-DD-ADR-NNN-<slug>.md` se sekcemi:",
+    "`Kontext`, `Rozhodnutí`, `Důsledky`.",
   ];
 
   ctx.ui.notify(lines.join("\n"), "info");
@@ -738,7 +744,7 @@ async function getCompletions(
               {
                 value: `model ${m}`,
                 label: `model ${m}`,
-                description: `Use model ${m}`,
+                description: `Použít model ${m}`,
               },
             ]
           : [],
@@ -754,12 +760,12 @@ async function getCompletions(
       {
         value: "routing on",
         label: "routing on",
-        description: "Enable auto-routing to nearest subproject root",
+        description: "Zapnout automatické směrování do kořene podprojektu",
       },
       {
         value: "routing off",
         label: "routing off",
-        description: "Disable auto-routing (always save to session root)",
+        description: "Vypnout automatické směrování (vždy ukládat do kořene session)",
       },
     ];
     const query = (argPrefix || "").trim().toLowerCase();
