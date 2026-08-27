@@ -30,6 +30,7 @@ import {
 import type { ADRDraft, ADRIndex, ADRRecord, ADRStatus } from "./src/types.js";
 import { getAvailableModels, loadConfig, saveConfig } from "./src/config.js";
 import {
+  coralGlow,
   cyanGlow,
   dividerGlow,
   formatReadingMode,
@@ -240,6 +241,7 @@ async function openReaderView(
     let readingMode = initialReadingMode;
     let isCzech = false;
     let isTranslating = false;
+    let translationError: string | null = null;
     const currentRecord = initialRecord;
     let translatedRecord: ADRRecord | null = null;
     const container = new Container();
@@ -256,6 +258,8 @@ async function openReaderView(
       let langBadge = cyanGlow("[🇬🇧 English (Original)]");
       if (isTranslating) {
         langBadge = violetGlow("[⏳ Překládám...]");
+      } else if (translationError) {
+        langBadge = coralGlow(`[❌ ${translationError}]`);
       } else if (isCzech) {
         langBadge = pinkGlow("[🇨🇿 Čeština (Doslovný překlad)]");
       }
@@ -301,6 +305,7 @@ async function openReaderView(
         } else if (matchesKey(data, "t") || matchesKey(data, "l")) {
           if (isCzech) {
             isCzech = false;
+            translationError = null;
             rebuild();
             tui.requestRender();
             return;
@@ -308,20 +313,29 @@ async function openReaderView(
 
           if (translatedRecord) {
             isCzech = true;
+            translationError = null;
             rebuild();
             tui.requestRender();
             return;
           }
 
           isTranslating = true;
+          translationError = null;
           rebuild();
           tui.requestRender();
 
           try {
-            translatedRecord = await translateRecordToCzech(currentRecord, ctx);
-            isCzech = true;
-          } catch {
-            // translation failed, stay on original
+            const result = await translateRecordToCzech(currentRecord, ctx);
+            if (result.ok) {
+              translatedRecord = result.record;
+              isCzech = true;
+              translationError = null;
+            } else {
+              translationError = result.error || "Překlad selhal";
+            }
+          } catch (err: unknown) {
+            translationError =
+              err instanceof Error ? err.message : String(err);
           } finally {
             isTranslating = false;
             rebuild();

@@ -24,11 +24,23 @@ export interface ParsedTranslation {
   consequences?: string;
 }
 
+export interface TranslationResult {
+  ok: boolean;
+  record: ADRRecord;
+  error?: string;
+}
+
 interface ModelRegistryLike {
   find?: (provider: string, modelId: string) => Model<Api> | undefined;
   getApiKeyAndHeaders?: (
     model: Model<Api>,
-  ) => Promise<{ ok: boolean; apiKey?: string; headers?: Record<string, string>; env?: Record<string, string>; error?: string }>;
+  ) => Promise<{
+    ok: boolean;
+    apiKey?: string;
+    headers?: Record<string, string>;
+    env?: Record<string, string>;
+    error?: string;
+  }>;
 }
 
 export const LITERAL_TRANSLATION_SYSTEM_PROMPT = `You are a strict, faithful, literal translator.
@@ -45,29 +57,98 @@ STRICT RULES:
   "consequences": "<literal Czech translation of consequences>"
 }`;
 
+function extractStringField(
+  obj: Record<string, unknown>,
+  keys: string[],
+): string | undefined {
+  for (const k of keys) {
+    if (typeof obj[k] === "string" && (obj[k] as string).trim()) {
+      return (obj[k] as string).trim();
+    }
+  }
+  return undefined;
+}
+
 /**
- * Parses and validates JSON translation payload.
+ * Parses JSON translation payload with support for fenced blocks, substrings, and relaxed keys.
  */
 export function parseTranslationPayload(
   rawText: string,
 ): ParsedTranslation | null {
-  try {
-    const cleanJson = rawText
-      .replace(/^```json\s*/i, "")
-      .replace(/\s*```$/i, "")
-      .trim();
-    const parsed = JSON.parse(cleanJson) as ParsedTranslation;
-    if (
-      parsed &&
-      typeof parsed.title === "string" &&
-      typeof parsed.context === "string" &&
-      typeof parsed.decision === "string" &&
-      typeof parsed.consequences === "string"
-    ) {
-      return parsed;
+  const tryParseObject = (str: string): ParsedTranslation | null => {
+    try {
+      const parsed = JSON.parse(str);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const obj = parsed as Record<string, unknown>;
+        const title = extractStringField(obj, ["title", "Title", "nazev", "titulek"]);
+        const context = extractStringField(obj, ["context", "Context", "kontext", "duvod"]);
+        const decision = extractStringField(obj, ["decision", "Decision", "rozhodnuti", "reseni"]);
+        const consequences = extractStringField(obj, ["consequences", "Consequences", "dusledky", "dopady"]);
+
+        if (title && context && decision && consequences) {
+          return { title, context, decision, consequences };
+        }
+      }
+    } catch {
+      // Ignore parse failure
     }
-  } catch {
-    // Parsing error
+    return null;
+  };
+
+  const clean = rawText.trim();
+
+  // 1. Direct parse
+  const direct = tryParseObject(clean);
+  if (direct) return direct;
+
+  // 2. Fence matching: ```json ... ``` or ``` ... ```
+  const fenceMatch = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenceMatch) {
+    const fromFence = tryParseObject(fenceMatch[1].trim());
+    if (fromFence) return fromFence;
+  }
+
+  // 3. Outer balanced { ... }
+  const firstBrace = clean.indexOf("{");
+  const lastBrace = clean.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const sub = clean.slice(firstBrace, lastBrace + 1);
+    const fromBrace = tryParseObject(sub);
+    if (fromBrace) return fromBrace;
+  }
+
+  return null;
+}
+
+/**
+ * Fallback parser for when the model outputs MADR Markdown lines instead of JSON.
+ */
+export function parseTranslationFromMarkdown(
+  text: string,
+  original: ADRRecord,
+): ADRRecord | null {
+  const titleMatch =
+    text.match(/^#\s*(?:ADR-\d+)?:\s*(.+)$/m) || text.match(/^#\s*(.+)$/m);
+  const contextMatch = text.match(/-\s*\*\*(?:Context|Kontext):\*\*\s*(.+)$/im);
+  const decisionMatch = text.match(
+    /-\s*\*\*(?:Decision|Rozhodnutí|Rozhodnuti):\*\*\s*(.+)$/im,
+  );
+  const consequencesMatch = text.match(
+    /-\s*\*\*(?:Consequences|Důsledky|Dusledky|Dopady):\*\*\s*(.+)$/im,
+  );
+
+  if (contextMatch || decisionMatch || consequencesMatch || titleMatch) {
+    return {
+      ...original,
+      title: titleMatch
+        ? (titleMatch[2] || titleMatch[1]).trim()
+        : original.title,
+      context: contextMatch ? contextMatch[1].trim() : original.context,
+      decision: decisionMatch ? decisionMatch[1].trim() : original.decision,
+      consequences: consequencesMatch
+        ? consequencesMatch[1].trim()
+        : original.consequences,
+    };
   }
   return null;
 }
@@ -80,15 +161,18 @@ export async function resolveModel(
 ): Promise<Model<Api> | undefined> {
   const config = loadConfig();
   const rawSetting = (config.translateModel || "default").trim();
-  const registry = (ctx as { modelRegistry?: ModelRegistryLike })?.modelRegistry;
+  const registry = (ctx as { modelRegistry?: ModelRegistryLike })
+    ?.modelRegistry;
 
   // 1. "current" setting -> use active session model
-  if (rawSetting === "current") {
-    return (ctx as { model?: Model<Api> })?.model;
+  if (rawSetting.toLowerCase() === "current") {
+    if ((ctx as { model?: Model<Api> })?.model) {
+      return (ctx as { model?: Model<Api> }).model;
+    }
   }
 
   // 2. "default" setting -> read from settings.json
-  if (rawSetting === "default") {
+  if (rawSetting.toLowerCase() === "default") {
     try {
       const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
       if (existsSync(settingsPath)) {
@@ -117,9 +201,20 @@ export async function resolveModel(
       const found = registry.find(provider, modelId);
       if (found) return found;
     }
+    // Also try full rawSetting as modelId under openrouter
+    if (registry?.find && provider !== "openrouter") {
+      const foundOR = registry.find("openrouter", rawSetting);
+      if (foundOR) return foundOR;
+    }
   } else if (registry?.find) {
-    // Model ID only without provider prefix (e.g. "gemini-3.7-flash")
-    for (const prov of ["google", "openrouter", "openai", "anthropic", "moonshotai"]) {
+    // Bare model ID (e.g. "gemini-3.7-flash") -> search providers
+    for (const prov of [
+      "google",
+      "openrouter",
+      "openai",
+      "anthropic",
+      "moonshotai",
+    ]) {
       const found = registry.find(prov, rawSetting);
       if (found) return found;
     }
@@ -130,7 +225,7 @@ export async function resolveModel(
     return (ctx as { model?: Model<Api> }).model;
   }
 
-  // 5. Fallback: try finding standard translation candidates
+  // 5. Fallback: try finding standard candidates
   const fallbacks = [
     { provider: "google", id: "gemini-3.7-flash" },
     { provider: "google", id: "gemini-2.5-flash" },
@@ -150,22 +245,31 @@ export async function resolveModel(
 export async function translateRecordToCzech(
   record: ADRRecord,
   ctx: ExtensionContext | ExtensionCommandContext,
-): Promise<ADRRecord> {
+): Promise<TranslationResult> {
   const cacheKey = `${record.id}:${record.date}:${record.title}`;
   const cached = translationCache.get(cacheKey);
   if (cached) {
-    return cached;
+    return { ok: true, record: cached };
   }
 
   const model = await resolveModel(ctx);
   if (!model) {
-    return record;
+    return {
+      ok: false,
+      record,
+      error: "Model pro překlad nebyl nalezen v registrech",
+    };
   }
 
-  const registry = (ctx as { modelRegistry?: ModelRegistryLike })?.modelRegistry;
+  const registry = (ctx as { modelRegistry?: ModelRegistryLike })
+    ?.modelRegistry;
   const auth = await registry?.getApiKeyAndHeaders?.(model);
   if (!auth?.ok) {
-    return record;
+    return {
+      ok: false,
+      record,
+      error: auth?.error || `Chybí API klíč pro provider ${model.provider}`,
+    };
   }
 
   const payload = {
@@ -190,6 +294,14 @@ export async function translateRecordToCzech(
       signal: (ctx as { signal?: AbortSignal })?.signal,
     });
 
+    if (response.stopReason === "error") {
+      return {
+        ok: false,
+        record,
+        error: response.errorMessage || "Chyba při volání modelu",
+      };
+    }
+
     const textContent = response.content
       .flatMap((p) => (p.type === "text" ? [p.text] : []))
       .join("")
@@ -197,12 +309,7 @@ export async function translateRecordToCzech(
 
     if (textContent) {
       const parsed = parseTranslationPayload(textContent);
-      if (
-        parsed?.title &&
-        parsed.context &&
-        parsed.decision &&
-        parsed.consequences
-      ) {
+      if (parsed?.title && parsed.context && parsed.decision && parsed.consequences) {
         const translated: ADRRecord = {
           ...record,
           title: parsed.title.trim(),
@@ -211,12 +318,28 @@ export async function translateRecordToCzech(
           consequences: parsed.consequences.trim(),
         };
         translationCache.set(cacheKey, translated);
-        return translated;
+        return { ok: true, record: translated };
+      }
+
+      // Try markdown fallback
+      const mdFallback = parseTranslationFromMarkdown(textContent, record);
+      if (mdFallback) {
+        translationCache.set(cacheKey, mdFallback);
+        return { ok: true, record: mdFallback };
       }
     }
-  } catch {
-    // Non-fatal fallback
-  }
 
-  return record;
+    return {
+      ok: false,
+      record,
+      error: "Model nevrátil platnou strukturu překladu",
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      record,
+      error: message,
+    };
+  }
 }
