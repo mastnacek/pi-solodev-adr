@@ -28,11 +28,7 @@ import {
   searchRecords,
 } from "./src/ledger.js";
 import type { ADRDraft, ADRIndex, ADRRecord, ADRStatus } from "./src/types.js";
-import {
-  getAvailableModels,
-  loadConfig,
-  saveConfig,
-} from "./src/config.js";
+import { getAvailableModels, loadConfig, saveConfig } from "./src/config.js";
 import {
   cyanGlow,
   dividerGlow,
@@ -73,7 +69,8 @@ const SUBCOMMANDS = [
   {
     value: "model",
     label: "model [name]",
-    description: "Select or display translation model (e.g. openrouter/google/gemini-2.5-flash)",
+    description:
+      "Select or display translation model (e.g. openrouter/google/gemini-2.5-flash)",
   },
   {
     value: "status",
@@ -550,7 +547,10 @@ async function handleModel(
     const available = getAvailableModels(ctx);
     ctx.ui.notify(
       `Current translation model: ${pinkGlow(config.translateModel || "openrouter/google/gemini-2.5-flash")}\n\nAvailable models:\n` +
-        available.slice(0, 10).map((m) => `  - /adr model ${m}`).join("\n"),
+        available
+          .slice(0, 10)
+          .map((m) => `  - /adr model ${m}`)
+          .join("\n"),
       "info",
     );
     return;

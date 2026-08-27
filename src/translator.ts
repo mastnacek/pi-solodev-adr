@@ -1,8 +1,15 @@
 import type {
+  Api,
+  AssistantMessage,
+  Context,
+  Model,
+} from "@earendil-works/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
+import type {
   ExtensionCommandContext,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "./config.js";
@@ -10,20 +17,7 @@ import type { ADRRecord } from "./types.js";
 
 const translationCache = new Map<string, ADRRecord>();
 
-interface OpenRouterAuth {
-  apiKey?: string;
-  model?: string;
-}
-
-interface OpenRouterResponse {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
-}
-
-interface ParsedTranslation {
+export interface ParsedTranslation {
   title?: string;
   context?: string;
   decision?: string;
@@ -31,129 +25,12 @@ interface ParsedTranslation {
 }
 
 interface ModelRegistryLike {
-  find?: (provider: string, modelId: string) => unknown;
+  find?: (provider: string, modelId: string) => Model<Api> | undefined;
   getApiKeyAndHeaders?: (
-    model: unknown,
-  ) => Promise<{ ok: boolean; apiKey?: string }>;
+    model: Model<Api>,
+  ) => Promise<{ ok: boolean; apiKey?: string; headers?: Record<string, string>; env?: Record<string, string>; error?: string }>;
 }
 
-/**
- * Finds an API key and resolved model from configured model, session context, env, or Pi stores.
- */
-export async function getOpenRouterAuth(
-  ctx: ExtensionContext | ExtensionCommandContext,
-): Promise<OpenRouterAuth> {
-  const config = loadConfig();
-  const rawModel =
-    config.translateModel || "openrouter/google/gemini-2.5-flash";
-  let targetProvider = "openrouter";
-  let targetModel = rawModel;
-
-  if (rawModel.includes("/")) {
-    const slash = rawModel.indexOf("/");
-    targetProvider = rawModel.slice(0, slash);
-    targetModel = rawModel.slice(slash + 1);
-  }
-
-  // 1. Check environment variable
-  if (
-    process.env.OPENROUTER_API_KEY &&
-    (targetProvider === "openrouter" || targetProvider === "default")
-  ) {
-    return {
-      apiKey: process.env.OPENROUTER_API_KEY,
-      model: targetModel,
-    };
-  }
-
-  // 2. Check ctx.modelRegistry for configured provider
-  try {
-    const registry = (ctx as { modelRegistry?: ModelRegistryLike })
-      .modelRegistry;
-    if (registry) {
-      const found = registry.find?.(targetProvider, targetModel);
-      if (found) {
-        const auth = await registry.getApiKeyAndHeaders?.(found);
-        if (auth?.ok && auth.apiKey) {
-          return { apiKey: auth.apiKey, model: targetModel };
-        }
-      }
-
-      // Fallback candidates on openrouter
-      const fallbackCandidates = [
-        "google/gemini-2.5-flash",
-        "google/gemini-3.1-flash-lite",
-        "meta-llama/llama-3.3-70b-instruct",
-        "anthropic/claude-3.5-haiku",
-      ];
-      for (const cand of fallbackCandidates) {
-        const foundFallback = registry.find?.("openrouter", cand);
-        if (foundFallback) {
-          const auth = await registry.getApiKeyAndHeaders?.(foundFallback);
-          if (auth?.ok && auth.apiKey) {
-            return { apiKey: auth.apiKey, model: cand };
-          }
-        }
-      }
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  // 3. Check ~/.pi/agent/models-store.json or settings.json
-  try {
-    const modelsStorePath = join(
-      homedir(),
-      ".pi",
-      "agent",
-      "models-store.json",
-    );
-    const raw = readFileSync(modelsStorePath, "utf8");
-    const parsed = JSON.parse(raw) as Record<string, { apiKey?: string }>;
-    if (parsed[targetProvider]?.apiKey) {
-      return {
-        apiKey: parsed[targetProvider].apiKey,
-        model: targetModel,
-      };
-    }
-    if (parsed.openrouter?.apiKey) {
-      return {
-        apiKey: parsed.openrouter.apiKey,
-        model: targetModel,
-      };
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  // 4. Check ~/.pi/agent/settings.json
-  try {
-    const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
-    const raw = readFileSync(settingsPath, "utf8");
-    const parsed = JSON.parse(raw) as Record<string, { apiKey?: string }>;
-    if (parsed[targetProvider]?.apiKey) {
-      return {
-        apiKey: parsed[targetProvider].apiKey,
-        model: targetModel,
-      };
-    }
-    if (parsed.openrouter?.apiKey) {
-      return {
-        apiKey: parsed.openrouter.apiKey,
-        model: targetModel,
-      };
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  return { model: targetModel };
-}
-
-/**
- * Strict literal translation system prompt.
- * Zero room for enhancement, summaries, or conversational filler.
- */
 export const LITERAL_TRANSLATION_SYSTEM_PROMPT = `You are a strict, faithful, literal translator.
 Translate the provided Architecture Decision Record (ADR) fields from English into Czech (Čeština).
 
@@ -167,8 +44,6 @@ STRICT RULES:
   "decision": "<literal Czech translation of decision>",
   "consequences": "<literal Czech translation of consequences>"
 }`;
-
-const OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
 /**
  * Parses and validates JSON translation payload.
@@ -198,7 +73,79 @@ export function parseTranslationPayload(
 }
 
 /**
- * Performs a literal translation of an ADR record into Czech via OpenRouter or active model.
+ * Resolves configured model from registry, settings, or current session.
+ */
+export async function resolveModel(
+  ctx: ExtensionContext | ExtensionCommandContext,
+): Promise<Model<Api> | undefined> {
+  const config = loadConfig();
+  const rawSetting = (config.translateModel || "default").trim();
+  const registry = (ctx as { modelRegistry?: ModelRegistryLike })?.modelRegistry;
+
+  // 1. "current" setting -> use active session model
+  if (rawSetting === "current") {
+    return (ctx as { model?: Model<Api> })?.model;
+  }
+
+  // 2. "default" setting -> read from settings.json
+  if (rawSetting === "default") {
+    try {
+      const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
+      if (existsSync(settingsPath)) {
+        const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as {
+          defaultProvider?: string;
+          defaultModel?: string;
+        };
+        const prov = settings.defaultProvider;
+        const mod = settings.defaultModel;
+        if (prov && mod && registry?.find) {
+          const found = registry.find(prov, mod);
+          if (found) return found;
+        }
+      }
+    } catch {
+      // Fall through
+    }
+  }
+
+  // 3. Specific "<provider>/<modelId>" setting (e.g. "google/gemini-3.7-flash")
+  if (rawSetting.includes("/")) {
+    const slash = rawSetting.indexOf("/");
+    const provider = rawSetting.slice(0, slash);
+    const modelId = rawSetting.slice(slash + 1);
+    if (registry?.find) {
+      const found = registry.find(provider, modelId);
+      if (found) return found;
+    }
+  } else if (registry?.find) {
+    // Model ID only without provider prefix (e.g. "gemini-3.7-flash")
+    for (const prov of ["google", "openrouter", "openai", "anthropic", "moonshotai"]) {
+      const found = registry.find(prov, rawSetting);
+      if (found) return found;
+    }
+  }
+
+  // 4. Fallback to active session model if available
+  if ((ctx as { model?: Model<Api> })?.model) {
+    return (ctx as { model?: Model<Api> }).model;
+  }
+
+  // 5. Fallback: try finding standard translation candidates
+  const fallbacks = [
+    { provider: "google", id: "gemini-3.7-flash" },
+    { provider: "google", id: "gemini-2.5-flash" },
+    { provider: "openrouter", id: "google/gemini-2.5-flash" },
+  ];
+  for (const fb of fallbacks) {
+    const found = registry?.find?.(fb.provider, fb.id);
+    if (found) return found;
+  }
+
+  return undefined;
+}
+
+/**
+ * Performs a literal translation of an ADR record into Czech via Pi's model execution.
  */
 export async function translateRecordToCzech(
   record: ADRRecord,
@@ -210,8 +157,16 @@ export async function translateRecordToCzech(
     return cached;
   }
 
-  const { apiKey, model = "google/gemini-2.5-flash" } =
-    await getOpenRouterAuth(ctx);
+  const model = await resolveModel(ctx);
+  if (!model) {
+    return record;
+  }
+
+  const registry = (ctx as { modelRegistry?: ModelRegistryLike })?.modelRegistry;
+  const auth = await registry?.getApiKeyAndHeaders?.(model);
+  if (!auth?.ok) {
+    return record;
+  }
 
   const payload = {
     title: record.title,
@@ -221,56 +176,47 @@ export async function translateRecordToCzech(
   };
 
   const userPrompt = JSON.stringify(payload, null, 2);
+  const llmContext: Context = {
+    systemPrompt: LITERAL_TRANSLATION_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: userPrompt } as never],
+  };
 
-  // If OpenRouter key is available, call OpenRouter directly
-  if (apiKey) {
-    try {
-      const response = await fetch(OPENROUTER_ENDPOINT, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://github.com/mastnacek/pi-solodev-adr",
-          "X-Title": "pi-solo-radar ADR Reader",
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: LITERAL_TRANSLATION_SYSTEM_PROMPT },
-            { role: "user", content: userPrompt },
-          ],
-          temperature: 0.1,
-        }),
-      });
+  try {
+    const response: AssistantMessage = await completeSimple(model, llmContext, {
+      apiKey: auth.apiKey,
+      headers: auth.headers,
+      env: auth.env,
+      maxTokens: 4096,
+      signal: (ctx as { signal?: AbortSignal })?.signal,
+    });
 
-      if (response.ok) {
-        const data = (await response.json()) as OpenRouterResponse;
-        const textContent = data.choices?.[0]?.message?.content?.trim();
-        if (textContent) {
-          const parsed = parseTranslationPayload(textContent);
-          if (
-            parsed?.title &&
-            parsed.context &&
-            parsed.decision &&
-            parsed.consequences
-          ) {
-            const translated: ADRRecord = {
-              ...record,
-              title: parsed.title.trim(),
-              context: parsed.context.trim(),
-              decision: parsed.decision.trim(),
-              consequences: parsed.consequences.trim(),
-            };
-            translationCache.set(cacheKey, translated);
-            return translated;
-          }
-        }
+    const textContent = response.content
+      .flatMap((p) => (p.type === "text" ? [p.text] : []))
+      .join("")
+      .trim();
+
+    if (textContent) {
+      const parsed = parseTranslationPayload(textContent);
+      if (
+        parsed?.title &&
+        parsed.context &&
+        parsed.decision &&
+        parsed.consequences
+      ) {
+        const translated: ADRRecord = {
+          ...record,
+          title: parsed.title.trim(),
+          context: parsed.context.trim(),
+          decision: parsed.decision.trim(),
+          consequences: parsed.consequences.trim(),
+        };
+        translationCache.set(cacheKey, translated);
+        return translated;
       }
-    } catch {
-      // Fall through to fallback
     }
+  } catch {
+    // Non-fatal fallback
   }
 
-  // Fallback: return original if translation service is unavailable
   return record;
 }
