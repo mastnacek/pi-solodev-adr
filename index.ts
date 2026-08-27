@@ -29,11 +29,17 @@ import {
 } from "./src/ledger.js";
 import type { ADRDraft, ADRIndex, ADRRecord, ADRStatus } from "./src/types.js";
 import {
+  cyanGlow,
+  dividerGlow,
   formatReadingMode,
+  goldGlow,
+  greenGlow,
   highlightADRMarkdown,
+  pinkGlow,
   renderDirectoryHeader,
   renderDirectoryTable,
   renderStatusBadge,
+  violetGlow,
 } from "./src/viewer.js";
 
 const SUBCOMMANDS = [
@@ -228,16 +234,16 @@ async function openReaderView(
 
     const rebuild = () => {
       container.clear();
-      // Top Border
+      // Top Border with Pink Glow
       container.addChild(
-        new DynamicBorder((s: string) => theme.fg("accent", s)),
+        new DynamicBorder((s: string) => pinkGlow(s)),
       );
 
       // Title & Mode pill
       const modeBadge = readingMode
-        ? theme.fg("success", "[● Reading Mode (Clean)]")
-        : theme.fg("warning", "[⚡ Syntax Highlighting (Raw)]");
-      const titleLine = `${theme.fg("accent", theme.bold(`${record.id}: ${record.title}`))}  ${modeBadge}`;
+        ? greenGlow("[● Reading Mode (Clean)]")
+        : goldGlow("[⚡ Syntax Highlighting (Raw)]");
+      const titleLine = `${pinkGlow(theme.bold(`◈ ${record.id}: ${record.title}`))}  ${modeBadge}`;
       container.addChild(new Text(titleLine, 1, 0));
       container.addChild(new Spacer(1));
 
@@ -250,13 +256,13 @@ async function openReaderView(
       container.addChild(new Spacer(1));
       container.addChild(
         new Text(
-          theme.fg("dim", "m / r: toggle reading mode • esc: close"),
+          violetGlow("m / r: toggle reading mode • esc: close"),
           1,
           0,
         ),
       );
       container.addChild(
-        new DynamicBorder((s: string) => theme.fg("accent", s)),
+        new DynamicBorder((s: string) => pinkGlow(s)),
       );
     };
 
@@ -306,51 +312,51 @@ async function openDirectoryExplorer(
       (tui, theme, _kb, done) => {
         const container = new Container();
 
-        // Top Border
-        container.addChild(
-          new DynamicBorder((s: string) => theme.fg("accent", s)),
-        );
+      // Top Border with Pink Glow
+      container.addChild(
+        new DynamicBorder((s: string) => pinkGlow(s)),
+      );
 
-        // Header lines
-        const headerLines = renderDirectoryHeader(index, decisionsDir, theme);
-        for (const h of headerLines) {
-          container.addChild(new Text(h, 1, 0));
-        }
-        container.addChild(new Spacer(1));
+      // Header lines
+      const headerLines = renderDirectoryHeader(index, decisionsDir, theme);
+      for (const h of headerLines) {
+        container.addChild(new Text(h, 1, 0));
+      }
+      container.addChild(new Spacer(1));
 
-        // SelectList items
-        const items: SelectItem[] = index.records.map((r) => {
-          const badge = renderStatusBadge(r.status, theme);
-          return {
-            value: r.id,
-            label: `${r.id}  ${badge}  ${r.title}`,
-            description: r.date,
-          };
-        });
+      // SelectList items with distinct pink/green/gold pills
+      const items: SelectItem[] = index.records.map((r) => {
+        const badge = renderStatusBadge(r.status, theme);
+        return {
+          value: r.id,
+          label: `${pinkGlow(r.id)}  ${badge}  ${r.title}`,
+          description: r.date,
+        };
+      });
 
-        const selectList = new SelectList(items, Math.min(items.length, 12), {
-          selectedPrefix: (t) => theme.fg("accent", t),
-          selectedText: (t) => theme.fg("accent", theme.bold(t)),
-          description: (t) => theme.fg("dim", t),
-          scrollInfo: (t) => theme.fg("muted", t),
-          noMatch: (t) => theme.fg("warning", t),
-        });
+      const selectList = new SelectList(items, Math.min(items.length, 12), {
+        selectedPrefix: (t) => pinkGlow(t),
+        selectedText: (t) => pinkGlow(theme.bold(t)),
+        description: (t) => violetGlow(t),
+        scrollInfo: (t) => dividerGlow(t),
+        noMatch: (t) => goldGlow(t),
+      });
 
-        selectList.onSelect = (item) => done(item.value);
-        selectList.onCancel = () => done(null);
-        container.addChild(selectList);
+      selectList.onSelect = (item) => done(item.value);
+      selectList.onCancel = () => done(null);
+      container.addChild(selectList);
 
-        container.addChild(new Spacer(1));
-        container.addChild(
-          new Text(
-            theme.fg("dim", "↑↓: navigate • enter: read ADR • esc: exit"),
-            1,
-            0,
-          ),
-        );
-        container.addChild(
-          new DynamicBorder((s: string) => theme.fg("accent", s)),
-        );
+      container.addChild(new Spacer(1));
+      container.addChild(
+        new Text(
+          violetGlow("↑↓: navigate • enter: read ADR • esc: exit"),
+          1,
+          0,
+        ),
+      );
+      container.addChild(
+        new DynamicBorder((s: string) => pinkGlow(s)),
+      );
 
         return {
           render: (w) => container.render(w),

@@ -9,29 +9,69 @@ export interface StyleTheme {
   underline?: (text: string) => string;
 }
 
+// TrueColor Neon Pink & Cyber Glow Palette with ANSI 256 fallback
+const NEON_PINK = "\x1b[38;2;255;113;206m"; // Neon hot pink
+const NEON_CYAN = "\x1b[38;2;1;205;254m";   // Neon electric cyan
+const NEON_GREEN = "\x1b[38;2;5;255;161m";  // Neon emerald green
+const NEON_GOLD = "\x1b[38;2;255;211;25m";  // Neon amber gold
+const NEON_CORAL = "\x1b[38;2;255;85;115m"; // Neon coral red
+const NEON_VIOLET = "\x1b[38;2;185;103;255m"; // Neon electric violet
+const GLOW_DIVIDER = "\x1b[38;2;130;70;170m"; // Subtle glowing purple divider
+const ANSI_RESET = "\x1b[39m";
+
+export function pinkGlow(text: string): string {
+  return `${NEON_PINK}${text}${ANSI_RESET}`;
+}
+
+export function cyanGlow(text: string): string {
+  return `${NEON_CYAN}${text}${ANSI_RESET}`;
+}
+
+export function greenGlow(text: string): string {
+  return `${NEON_GREEN}${text}${ANSI_RESET}`;
+}
+
+export function goldGlow(text: string): string {
+  return `${NEON_GOLD}${text}${ANSI_RESET}`;
+}
+
+export function coralGlow(text: string): string {
+  return `${NEON_CORAL}${text}${ANSI_RESET}`;
+}
+
+export function violetGlow(text: string): string {
+  return `${NEON_VIOLET}${text}${ANSI_RESET}`;
+}
+
+export function dividerGlow(text: string): string {
+  return `${GLOW_DIVIDER}${text}${ANSI_RESET}`;
+}
+
 // Fallback ANSI colorizer when Theme instance is not provided
 function defaultFg(color: ThemeColor, text: string): string {
   switch (color) {
     case "accent":
+    case "syntaxType":
+      return pinkGlow(text);
     case "toolTitle":
     case "mdHeading":
-      return `\x1b[36m${text}\x1b[39m`; // Cyan
+      return cyanGlow(text);
     case "success":
     case "syntaxFunction":
-      return `\x1b[32m${text}\x1b[39m`; // Green
+      return greenGlow(text);
     case "warning":
     case "syntaxKeyword":
-      return `\x1b[33m${text}\x1b[39m`; // Yellow
+      return goldGlow(text);
     case "error":
-      return `\x1b[31m${text}\x1b[39m`; // Red
+      return coralGlow(text);
     case "muted":
     case "dim":
     case "syntaxComment":
-      return `\x1b[90m${text}\x1b[39m`; // Gray
+      return `\x1b[90m${text}\x1b[39m`;
     case "syntaxString":
-      return `\x1b[32m${text}\x1b[39m`; // Green
-    case "syntaxType":
-      return `\x1b[35m${text}\x1b[39m`; // Magenta
+      return greenGlow(text);
+    case "syntaxVariable":
+      return violetGlow(text);
     case "text":
     default:
       return text;
@@ -52,16 +92,19 @@ function defaultUnderline(text: string): string {
 
 function resolveTheme(theme?: StyleTheme): Required<StyleTheme> {
   return {
-    fg: (color, text) => (theme?.fg ? theme.fg(color, text) : defaultFg(color, text)),
+    fg: (color, text) =>
+      theme?.fg ? theme.fg(color, text) : defaultFg(color, text),
     bg: (color, text) => (theme?.bg ? theme.bg(color, text) : text),
     bold: (text) => (theme?.bold ? theme.bold(text) : defaultBold(text)),
-    italic: (text) => (theme?.italic ? theme.italic(text) : defaultItalic(text)),
-    underline: (text) => (theme?.underline ? theme.underline(text) : defaultUnderline(text)),
+    italic: (text) =>
+      theme?.italic ? theme.italic(text) : defaultItalic(text),
+    underline: (text) =>
+      theme?.underline ? theme.underline(text) : defaultUnderline(text),
   };
 }
 
 /**
- * Returns a styled status badge.
+ * Returns a distinct glowing status badge.
  */
 export function renderStatusBadge(
   status: ADRStatus,
@@ -70,11 +113,11 @@ export function renderStatusBadge(
   const t = resolveTheme(theme);
   switch (status) {
     case "active":
-      return t.fg("success", "● active");
+      return greenGlow("● active");
     case "superseded":
-      return t.fg("warning", "○ superseded");
+      return goldGlow("○ superseded");
     case "deprecated":
-      return t.fg("error", "× deprecated");
+      return coralGlow("× deprecated");
     default:
       return t.fg("muted", `? ${status}`);
   }
@@ -106,40 +149,47 @@ export function stripMarkdownSyntax(text: string): string {
 
 /**
  * Formats an ADR record in clean Reading Mode where formatting elements
- * (hashes, asterisks, raw backticks, markdown bullet characters) are not displayed.
+ * (hashes, asterisks, raw backticks, markdown bullet characters) are not displayed,
+ * with pink glow headers and glowing callout frames.
  */
 export function formatReadingMode(
   record: ADRRecord,
   theme?: StyleTheme,
 ): string {
   const t = resolveTheme(theme);
-  const divider = t.fg("muted", "─".repeat(64));
+  const divider = dividerGlow("━".repeat(68));
+  const pipe = pinkGlow("│");
 
   const cleanContext = stripMarkdownSyntax(record.context);
   const cleanDecision = stripMarkdownSyntax(record.decision);
   const cleanConsequences = stripMarkdownSyntax(record.consequences);
 
+  const formatSectionBody = (body: string) =>
+    body
+      .split("\n")
+      .map((line) => `  ${pipe} ${line}`)
+      .join("\n");
+
   const lines = [
     t.bold(
-      t.fg(
-        "accent",
-        `ADR ${record.id.replace(/^ADR-?/i, "")} : ${record.title.toUpperCase()}`,
+      pinkGlow(
+        `◈ ADR ${record.id.replace(/^ADR-?/i, "")} : ${record.title.toUpperCase()}`,
       ),
     ),
     divider,
-    `  ${t.fg("muted", "Status:")}       ${renderStatusBadge(record.status, theme)}`,
-    `  ${t.fg("muted", "Recorded:")}     ${t.fg("dim", record.date)}`,
-    `  ${t.fg("muted", "File:")}         ${t.fg("dim", record.file || "uncommitted")}`,
+    `  ${violetGlow("Status:")}       ${renderStatusBadge(record.status, theme)}`,
+    `  ${violetGlow("Recorded:")}     ${t.fg("dim", record.date)}`,
+    `  ${violetGlow("File:")}         ${t.fg("dim", record.file || "uncommitted")}`,
     divider,
     "",
-    `  ${t.bold(t.fg("accent", "CONTEXT & PROBLEM"))}`,
-    `  ${cleanContext.split("\n").join("\n  ")}`,
+    `  ${t.bold(pinkGlow("◆ CONTEXT & PROBLEM"))}`,
+    formatSectionBody(cleanContext),
     "",
-    `  ${t.bold(t.fg("success", "DECISION & APPROACH"))}`,
-    `  ${cleanDecision.split("\n").join("\n  ")}`,
+    `  ${t.bold(cyanGlow("◆ DECISION & APPROACH"))}`,
+    formatSectionBody(cleanDecision),
     "",
-    `  ${t.bold(t.fg("warning", "CONSEQUENCES & TRADE-OFFS"))}`,
-    `  ${cleanConsequences.split("\n").join("\n  ")}`,
+    `  ${t.bold(goldGlow("◆ CONSEQUENCES & TRADE-OFFS"))}`,
+    formatSectionBody(cleanConsequences),
     "",
     divider,
   ];
@@ -163,13 +213,13 @@ export function formatReadingModeText(
     if (/^#\s+(.+)$/.test(trimmed)) {
       const title = trimmed.replace(/^#\s+/, "");
       formatted.push(
-        t.bold(t.fg("accent", stripMarkdownSyntax(title).toUpperCase())),
+        t.bold(pinkGlow(`◈ ${stripMarkdownSyntax(title).toUpperCase()}`)),
       );
-      formatted.push(t.fg("muted", "─".repeat(Math.min(64, title.length + 4))));
+      formatted.push(dividerGlow("━".repeat(Math.min(68, title.length + 6))));
     } else if (/^##+\s+(.+)$/.test(trimmed)) {
       const heading = trimmed.replace(/^##+\s+/, "");
       formatted.push("");
-      formatted.push(t.bold(t.fg("accent", stripMarkdownSyntax(heading))));
+      formatted.push(t.bold(cyanGlow(`◆ ${stripMarkdownSyntax(heading)}`)));
     } else if (/^-\s*\*\*([^*]+):\*\*\s*(.+)$/i.test(trimmed)) {
       const match = trimmed.match(/^-\s*\*\*([^*]+):\*\*\s*(.+)$/i);
       if (match) {
@@ -177,15 +227,15 @@ export function formatReadingModeText(
         const val = stripMarkdownSyntax(match[2].trim());
         if (key.toLowerCase() === "status") {
           formatted.push(
-            `  ${t.fg("muted", key + ":")} ${renderStatusBadge(val as ADRStatus, theme)}`,
+            `  ${violetGlow(key + ":")} ${renderStatusBadge(val as ADRStatus, theme)}`,
           );
         } else {
-          formatted.push(`  ${t.fg("muted", key + ":")} ${val}`);
+          formatted.push(`  ${violetGlow(key + ":")} ${val}`);
         }
       }
     } else if (/^[*-]\s+(.+)$/.test(trimmed)) {
       const item = trimmed.replace(/^[*-]\s+/, "");
-      formatted.push(`  • ${stripMarkdownSyntax(item)}`);
+      formatted.push(`  ${pinkGlow("•")} ${stripMarkdownSyntax(item)}`);
     } else {
       formatted.push(stripMarkdownSyntax(line));
     }
@@ -195,7 +245,7 @@ export function formatReadingModeText(
 }
 
 /**
- * Highlights raw ADR Markdown with ANSI syntax highlighting.
+ * Highlights raw ADR Markdown with vivid Pink & Cyan ANSI syntax highlighting.
  */
 export function highlightADRMarkdown(
   recordOrContent: ADRRecord | string,
@@ -222,18 +272,18 @@ export function highlightADRMarkdown(
     // Title: # ADR-001: Title
     if (/^#\s*(ADR-\d+)?:\s*(.+)$/i.test(line)) {
       const match = line.match(/^#\s*(ADR-\d+)?:\s*(.+)$/i);
-      const id = match?.[1] ? t.bold(t.fg("accent", match[1])) + ": " : "";
+      const id = match?.[1] ? t.bold(pinkGlow(match[1])) + ": " : "";
       const title = match?.[2] ? t.bold(match[2]) : line;
-      return t.fg("muted", "# ") + id + title;
+      return pinkGlow("# ") + id + title;
     }
 
     // Metadata lines: - **Key:** Value
     const metaMatch = line.match(/^(\s*-\s*\*\*([^*]+):\*\*\s*)(.*)$/i);
     if (metaMatch) {
-      const prefix = t.fg("muted", "- ");
+      const prefix = pinkGlow("- ");
       const keyName = metaMatch[2].trim();
       const rawVal = metaMatch[3].trim();
-      const styledKey = t.bold(t.fg("accent", `**${keyName}:**`));
+      const styledKey = t.bold(cyanGlow(`**${keyName}:**`));
 
       let styledVal = rawVal;
       if (keyName.toLowerCase() === "status") {
@@ -241,11 +291,11 @@ export function highlightADRMarkdown(
       } else if (keyName.toLowerCase() === "date") {
         styledVal = t.fg("dim", rawVal);
       } else if (keyName.toLowerCase() === "decision") {
-        styledVal = t.fg("success", rawVal);
+        styledVal = greenGlow(rawVal);
       } else if (keyName.toLowerCase() === "context") {
         styledVal = t.fg("text", rawVal);
       } else if (keyName.toLowerCase() === "consequences") {
-        styledVal = t.fg("warning", rawVal);
+        styledVal = goldGlow(rawVal);
       }
 
       return `${prefix}${styledKey} ${styledVal}`;
@@ -253,12 +303,12 @@ export function highlightADRMarkdown(
 
     // Code blocks
     if (line.startsWith("```")) {
-      return t.fg("dim", line);
+      return dividerGlow(line);
     }
 
     // Inline backticks
     return line.replace(/`([^`]+)`/g, (_m, code) =>
-      t.fg("syntaxFunction", `\`${code}\``),
+      pinkGlow(`\`${code}\``),
     );
   });
 
@@ -266,7 +316,7 @@ export function highlightADRMarkdown(
 }
 
 /**
- * Renders a directory overview header box for the Pi TUI.
+ * Renders a directory overview header box for the Pi TUI with neon accents.
  */
 export function renderDirectoryHeader(
   index: ADRIndex,
@@ -284,34 +334,33 @@ export function renderDirectoryHeader(
 
   const total = index.records.length;
   const stats = [
-    t.fg("success", `● ${active} active`),
-    t.fg("warning", `○ ${superseded} superseded`),
-    t.fg("error", `× ${deprecated} deprecated`),
+    greenGlow(`● ${active} active`),
+    goldGlow(`○ ${superseded} superseded`),
+    coralGlow(`× ${deprecated} deprecated`),
   ].join("  ");
 
   return [
-    t.bold(t.fg("accent", "  ADR ARCHITECTURAL LEDGER")),
-    `  ${t.fg("muted", "Storage:")}   ${t.fg("dim", dirPath)}`,
-    `  ${t.fg("muted", "Records:")}   ${t.bold(String(total))} total  [${stats}]`,
-    `  ${t.fg("muted", "Updated:")}   ${t.fg("dim", index.lastUpdated || "never")}`,
+    t.bold(pinkGlow("  ◈ ADR ARCHITECTURAL LEDGER")),
+    `  ${violetGlow("Storage:")}   ${t.fg("dim", dirPath)}`,
+    `  ${violetGlow("Records:")}   ${t.bold(String(total))} total  [${stats}]`,
+    `  ${violetGlow("Updated:")}   ${t.fg("dim", index.lastUpdated || "never")}`,
   ];
 }
 
 function getStatusFormatted(
   status: ADRStatus,
-  t: Required<StyleTheme>,
 ): { text: string; col: string } {
   if (status === "active") {
-    return { text: "● active    ", col: t.fg("success", "● active    ") };
+    return { text: "● active    ", col: greenGlow("● active    ") };
   }
   if (status === "superseded") {
-    return { text: "○ superseded", col: t.fg("warning", "○ superseded") };
+    return { text: "○ superseded", col: goldGlow("○ superseded") };
   }
-  return { text: "× deprecated", col: t.fg("error", "× deprecated") };
+  return { text: "× deprecated", col: coralGlow("× deprecated") };
 }
 
 /**
- * Renders a formatted directory table view with clean borders and syntax highlighting.
+ * Renders a formatted directory table view with clean glowing borders and syntax highlighting.
  */
 export function renderDirectoryTable(
   index: ADRIndex,
@@ -323,26 +372,23 @@ export function renderDirectoryTable(
 
   // Header Box
   lines.push(
-    t.fg(
-      "muted",
-      "┌─ ARCHITECTURAL DECISIONS ──────────────────────────────────────────────────┐",
+    dividerGlow(
+      "┌─ ◈ ARCHITECTURAL DECISIONS ────────────────────────────────────────────────┐",
     ),
   );
   for (const hLine of renderDirectoryHeader(index, dirPath, theme)) {
     lines.push(hLine);
   }
   lines.push(
-    t.fg(
-      "muted",
+    dividerGlow(
       "├──────────┬──────────────┬─────────────────────┬────────────────────────────┤",
     ),
   );
   lines.push(
-    `│ ${t.bold(t.fg("accent", "ID       "))} │ ${t.bold(t.fg("accent", "STATUS       "))} │ ${t.bold(t.fg("accent", "RECORDED (DATE/TIME) "))} │ ${t.bold(t.fg("accent", "TITLE                      "))} │`,
+    `│ ${t.bold(pinkGlow("ID       "))} │ ${t.bold(pinkGlow("STATUS       "))} │ ${t.bold(pinkGlow("RECORDED (DATE/TIME) "))} │ ${t.bold(pinkGlow("TITLE                      "))} │`,
   );
   lines.push(
-    t.fg(
-      "muted",
+    dividerGlow(
       "├──────────┼──────────────┼─────────────────────┼────────────────────────────┤",
     ),
   );
@@ -353,8 +399,8 @@ export function renderDirectoryTable(
     );
   } else {
     for (const r of index.records) {
-      const idCol = t.bold(t.fg("accent", r.id.padEnd(8)));
-      const { col: statusCol } = getStatusFormatted(r.status, t);
+      const idCol = t.bold(pinkGlow(r.id.padEnd(8)));
+      const { col: statusCol } = getStatusFormatted(r.status);
       const dateCol = t.fg("dim", r.date.slice(0, 19).padEnd(19));
       const truncatedTitle =
         r.title.length > 26 ? `${r.title.slice(0, 23)}...` : r.title.padEnd(26);
@@ -365,8 +411,7 @@ export function renderDirectoryTable(
   }
 
   lines.push(
-    t.fg(
-      "muted",
+    dividerGlow(
       "└──────────┴──────────────┴─────────────────────┴────────────────────────────┘",
     ),
   );
