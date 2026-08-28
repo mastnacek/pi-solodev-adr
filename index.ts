@@ -79,7 +79,8 @@ const SUBCOMMANDS = [
   {
     value: "routing",
     label: "routing [on|off]",
-    description: "Přepnout automatické směrování ADR do nejbližšího podprojektu",
+    description:
+      "Přepnout automatické směrování ADR do nejbližšího podprojektu",
   },
   {
     value: "status",
@@ -584,7 +585,10 @@ async function handleSearch(
   const configDir = getConfigDir();
   const results = await searchRecords(ctx.cwd, remainder, configDir);
   if (results.length === 0) {
-    ctx.ui.notify(`Žádné ADR záznamy neodpovídají výrazu "${remainder}".`, "info");
+    ctx.ui.notify(
+      `Žádné ADR záznamy neodpovídají výrazu "${remainder}".`,
+      "info",
+    );
     return;
   }
 
@@ -623,7 +627,10 @@ async function handleModel(
   }
 
   saveConfig({ translateModel: cleanModel });
-  ctx.ui.notify(`Model pro překlad nastaven na: ${pinkGlow(cleanModel)}`, "info");
+  ctx.ui.notify(
+    `Model pro překlad nastaven na: ${pinkGlow(cleanModel)}`,
+    "info",
+  );
 }
 
 async function handleRouting(
@@ -765,7 +772,8 @@ async function getCompletions(
       {
         value: "routing off",
         label: "routing off",
-        description: "Vypnout automatické směrování (vždy ukládat do kořene session)",
+        description:
+          "Vypnout automatické směrování (vždy ukládat do kořene session)",
       },
     ];
     const query = (argPrefix || "").trim().toLowerCase();
