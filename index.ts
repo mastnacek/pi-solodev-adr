@@ -20,7 +20,6 @@ import { injectDoctrineIntoSystemPrompt } from "./src/injector.js";
 import { relative } from "node:path";
 import {
   ensureDecisionsDir,
-  findProjectRoot,
   formatADRMarkdown,
   getDecisionsDir,
   getIndexPath,
@@ -186,7 +185,6 @@ async function promptAndSaveDraft(
   targetRoot = ctx.cwd,
 ): Promise<void> {
   const configDir = getConfigDir();
-  const index = await getOrLoadIndex(targetRoot, configDir);
   const relPath = relative(ctx.cwd, targetRoot).replace(/\\/g, "/") || ".";
   const displayLocation =
     relPath === "." ? "docs/adr/" : `${relPath}/docs/adr/`;
@@ -742,88 +740,89 @@ async function getCompletions(
   prefix: string,
 ): Promise<AutocompleteItem[] | null> {
   const configDir = getConfigDir();
-  const normalized = prefix.trimStart();
-  const match = normalized.match(/^(\S+)(?:\s+(.*))?$/);
+  const tokens = prefix.split(/\s+/).filter(Boolean);
+  const trailingSpace = /\s$/.test(prefix);
+  const normalizedPrefix = tokens.join(" ").toLowerCase();
 
-  if (!match || match[2] === undefined) {
-    const subPrefix = normalized.toLowerCase();
-    const matches = SUBCOMMANDS.flatMap((cmd) =>
-      cmd.value.startsWith(subPrefix)
-        ? [{ value: cmd.value, label: cmd.label, description: cmd.description }]
-        : [],
-    );
-    return matches.length > 0 ? matches : null;
-  }
+  // N-th token completion (2nd or 3rd level parameters)
+  if (tokens.length > 1 || (trailingSpace && tokens.length === 1)) {
+    const cmd = tokens[0]?.toLowerCase();
 
-  const [, subcommand, argPrefix] = match;
-  if (subcommand.toLowerCase() === "model") {
-    try {
-      const query = (argPrefix || "").trim().toLowerCase();
-      const available = getAvailableModels();
-      const matches = available.flatMap((m) =>
-        !query || m.toLowerCase().includes(query)
-          ? [
-              {
-                value: `model ${m}`,
-                label: `model ${m}`,
-                description: `Použít model ${m}`,
-              },
-            ]
-          : [],
+    if (cmd === "model") {
+      try {
+        const available = getAvailableModels();
+        const items: AutocompleteItem[] = available.map((m) => ({
+          value: `model ${m}`,
+          label: `model ${m}`,
+          description:
+            m === "current"
+              ? "Použít aktuální model konverzace"
+              : m === "default"
+                ? "Použít výchozí model"
+                : `Použít model ${m}`,
+        }));
+        const filtered = items.filter((i) =>
+          i.value.toLowerCase().startsWith(normalizedPrefix),
+        );
+        return filtered.length > 0 ? filtered : null;
+      } catch {
+        return null;
+      }
+    }
+
+    if (cmd === "routing") {
+      const items: AutocompleteItem[] = [
+        {
+          value: "routing on",
+          label: "routing on",
+          description: "Zapnout automatické směrování do kořene podprojektu",
+        },
+        {
+          value: "routing off",
+          label: "routing off",
+          description:
+            "Vypnout automatické směrování (vždy ukládat do kořene session)",
+        },
+      ];
+      const filtered = items.filter((i) =>
+        i.value.toLowerCase().startsWith(normalizedPrefix),
       );
-      return matches.length > 0 ? matches : null;
-    } catch {
-      return null;
+      return filtered.length > 0 ? filtered : null;
     }
-  }
 
-  if (subcommand.toLowerCase() === "routing") {
-    const items = [
-      {
-        value: "routing on",
-        label: "routing on",
-        description: "Zapnout automatické směrování do kořene podprojektu",
-      },
-      {
-        value: "routing off",
-        label: "routing off",
-        description:
-          "Vypnout automatické směrování (vždy ukládat do kořene session)",
-      },
-    ];
-    const query = (argPrefix || "").trim().toLowerCase();
-    const matches = items.filter(
-      (i) => !query || i.value.toLowerCase().includes(query),
-    );
-    return matches.length > 0 ? matches : null;
-  }
-
-  if (subcommand.toLowerCase() === "show") {
-    try {
-      const query = argPrefix.trim().toLowerCase();
-      const index = await getOrLoadIndex(process.cwd(), configDir);
-      const matches = index.records.flatMap((r) => {
-        const matchesQuery =
-          !query ||
-          r.id.toLowerCase().includes(query) ||
-          r.title.toLowerCase().includes(query);
-        return matchesQuery
-          ? [
-              {
-                value: `show ${r.id}`,
-                label: `${r.id} — ${r.title}`,
-                description: `[${r.status}] ${r.constraint}`,
-              },
-            ]
-          : [];
-      });
-      return matches.length > 0 ? matches : null;
-    } catch {
-      return null;
+    if (cmd === "show") {
+      try {
+        const index = await getOrLoadIndex(process.cwd(), configDir);
+        const items = index.records.map((r) => ({
+          value: `show ${r.id}`,
+          label: `${r.id} — ${r.title}`,
+          description: `[${r.status}] ${r.constraint}`,
+        }));
+        const filtered = items.filter(
+          (i) =>
+            i.value.toLowerCase().startsWith(normalizedPrefix) ||
+            i.label.toLowerCase().includes(tokens[1]?.toLowerCase() ?? ""),
+        );
+        return filtered.length > 0 ? filtered : null;
+      } catch {
+        return null;
+      }
     }
+
+    return null;
   }
 
-  return null;
+  // 1st Token Completion (Subcommands)
+  const typed = (tokens[0] ?? "").toLowerCase();
+  const items = SUBCOMMANDS.filter((cmd) =>
+    cmd.value.toLowerCase().startsWith(typed),
+  ).map((cmd) => ({
+    value: cmd.value,
+    label: cmd.label,
+    description: cmd.description,
+  }));
+
+  return items.length > 0 ? items : null;
 }
 
 async function executeRecordAdr(
@@ -965,7 +964,7 @@ export default function (pi: ExtensionAPI): void {
 
   // User slash command suite
   pi.registerCommand("adr", {
-    description: "Manage Architectural Decision Records (ADRs)",
+    description: "Správa architektonických rozhodnutí (ADR) a mantinelů",
     getArgumentCompletions: getCompletions,
     handler: async (
       args: string,
@@ -1004,7 +1003,7 @@ export default function (pi: ExtensionAPI): void {
           break;
         default:
           ctx.ui.notify(
-            `Unknown /adr command "${subcommand}".\nAvailable: /adr [list | new | show | search | status | help]`,
+            `Neznámý /adr příkaz "${subcommand}".\nDostupné: /adr [list | new | show | search | status | help]`,
             "warning",
           );
           break;
