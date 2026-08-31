@@ -345,6 +345,44 @@ export function renderDirectoryHeader(
   ];
 }
 
+/**
+ * Formats a compact, colorful ADR statusline string for the Pi agent statusbar.
+ * Only displays indicators that have active / non-zero counts to save statusline space.
+ * Returns undefined if there are no records or all counts are zero.
+ */
+export function formatStatusLine(index?: ADRIndex | null): string | undefined {
+  if (!index || !index.records || index.records.length === 0) {
+    return undefined;
+  }
+
+  const active = index.records.filter((r) => r.status === "active").length;
+  const superseded = index.records.filter(
+    (r) => r.status === "superseded",
+  ).length;
+  const deprecated = index.records.filter(
+    (r) => r.status === "deprecated",
+  ).length;
+
+  const parts: string[] = [];
+
+  if (active > 0) {
+    parts.push(greenGlow(`● ${active}`));
+  }
+  if (superseded > 0) {
+    parts.push(goldGlow(`○ ${superseded}`));
+  }
+  if (deprecated > 0) {
+    parts.push(coralGlow(`× ${deprecated}`));
+  }
+
+  if (parts.length === 0) {
+    return undefined;
+  }
+
+  const prefix = pinkGlow("ADR:");
+  return `${prefix} ${parts.join("  ")}`;
+}
+
 function getStatusFormatted(status: ADRStatus): { text: string; col: string } {
   if (status === "active") {
     return { text: "● active    ", col: greenGlow("● active    ") };

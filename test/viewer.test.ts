@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   formatReadingMode,
   formatReadingModeText,
+  formatStatusLine,
   highlightADRMarkdown,
   renderDirectoryHeader,
   renderDirectoryTable,
@@ -10,6 +11,13 @@ import {
   stripMarkdownSyntax,
 } from "../src/viewer.js";
 import type { ADRIndex, ADRRecord } from "../src/types.js";
+
+// Helper to strip ANSI codes for asserting plain text content
+function stripAnsi(text?: string): string {
+  if (!text) return "";
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\x1b\[[0-9;]*m/g, "");
+}
 
 test("stripMarkdownSyntax removes formatting markers", () => {
   const input =
@@ -202,4 +210,117 @@ test("viewer functions work with mock Theme class without unbinding this", () =>
 
   const table = renderDirectoryTable(index, "docs/adr", mockTheme);
   assert.ok(table.includes("ADR-001"));
+});
+
+test("formatStatusLine returns undefined on empty or null index", () => {
+  assert.equal(formatStatusLine(null), undefined);
+  assert.equal(formatStatusLine(undefined), undefined);
+
+  const emptyIndex: ADRIndex = {
+    version: 1,
+    lastUpdated: "2026-08-27 10:00:00",
+    records: [],
+  };
+  assert.equal(formatStatusLine(emptyIndex), undefined);
+});
+
+test("formatStatusLine formats compact ADR dashboard for single active record", () => {
+  const index: ADRIndex = {
+    version: 1,
+    lastUpdated: "2026-08-27 10:00:00",
+    records: [
+      {
+        id: "ADR-001",
+        title: "Test ADR",
+        status: "active",
+        date: "2026-08-27 10:00:00",
+        constraint: "Test constraint",
+        file: "1.md",
+      },
+    ],
+  };
+
+  const status = formatStatusLine(index);
+  assert.ok(status);
+  assert.equal(stripAnsi(status), "ADR: ● 1");
+  assert.ok(status.includes("\x1b[38;2;255;113;206m")); // pink glow prefix
+  assert.ok(status.includes("\x1b[38;2;5;255;161m")); // green glow active
+});
+
+test("formatStatusLine shows only non-zero active indicators to save space", () => {
+  const index: ADRIndex = {
+    version: 1,
+    lastUpdated: "2026-08-27 10:00:00",
+    records: [
+      {
+        id: "ADR-001",
+        title: "ADR 1",
+        status: "active",
+        date: "2026-08-27 10:00:00",
+        constraint: "Constraint 1",
+        file: "1.md",
+      },
+      {
+        id: "ADR-002",
+        title: "ADR 2",
+        status: "active",
+        date: "2026-08-27 10:00:00",
+        constraint: "Constraint 2",
+        file: "2.md",
+      },
+      {
+        id: "ADR-003",
+        title: "ADR 3",
+        status: "superseded",
+        date: "2026-08-27 10:00:00",
+        constraint: "Constraint 3",
+        file: "3.md",
+      },
+    ],
+  };
+
+  const status = formatStatusLine(index);
+  assert.ok(status);
+  const plain = stripAnsi(status);
+  assert.equal(plain, "ADR: ● 2  ○ 1");
+  // Ensure 0-count deprecated status (×) is NOT in the string
+  assert.ok(!plain.includes("×"));
+});
+
+test("formatStatusLine formats all status types when present", () => {
+  const index: ADRIndex = {
+    version: 1,
+    lastUpdated: "2026-08-27 10:00:00",
+    records: [
+      {
+        id: "ADR-001",
+        title: "ADR 1",
+        status: "active",
+        date: "2026-08-27 10:00:00",
+        constraint: "Constraint 1",
+        file: "1.md",
+      },
+      {
+        id: "ADR-002",
+        title: "ADR 2",
+        status: "superseded",
+        date: "2026-08-27 10:00:00",
+        constraint: "Constraint 2",
+        file: "2.md",
+      },
+      {
+        id: "ADR-003",
+        title: "ADR 3",
+        status: "deprecated",
+        date: "2026-08-27 10:00:00",
+        constraint: "Constraint 3",
+        file: "3.md",
+      },
+    ],
+  };
+
+  const status = formatStatusLine(index);
+  assert.ok(status);
+  const plain = stripAnsi(status);
+  assert.equal(plain, "ADR: ● 1  ○ 1  × 1");
 });

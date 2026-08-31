@@ -37,6 +37,7 @@ import {
   cyanGlow,
   dividerGlow,
   formatReadingMode,
+  formatStatusLine,
   goldGlow,
   greenGlow,
   highlightADRMarkdown,
@@ -113,18 +114,27 @@ function getConfigDir(): string | undefined {
   return undefined;
 }
 
+async function updateStatusBar(
+  ctx: ExtensionContext | ExtensionCommandContext,
+  dirOverride?: string,
+): Promise<void> {
+  if (!ctx.hasUI) return;
+  try {
+    const configDir = getConfigDir();
+    const index = await getOrLoadIndex(ctx.cwd, dirOverride || configDir);
+    const statusText = formatStatusLine(index);
+    ctx.ui.setStatus("pi-solo-radar", statusText);
+  } catch {
+    // Non-blocking
+  }
+}
+
 async function handleSessionStart(ctx: ExtensionContext): Promise<void> {
   try {
     const configDir = getConfigDir();
     await ensureDecisionsDir(ctx.cwd, configDir);
     invalidateCache();
-    const index = await getOrLoadIndex(ctx.cwd, configDir);
-    if (ctx.hasUI && index.records.length > 0) {
-      const activeCount = index.records.filter(
-        (r) => r.status === "active",
-      ).length;
-      ctx.ui.setStatus("pi-solo-radar", `ADRs: ${activeCount} active`);
-    }
+    await updateStatusBar(ctx);
   } catch {
     // Non-blocking initialization failure
   }
@@ -204,10 +214,7 @@ async function promptAndSaveDraft(
     const saved = await saveRecord(targetRoot, draft, configDir);
     invalidateCache();
     ctx.ui.notify(`Recorded ${saved.id}: ${saved.title}`, "info");
-    ctx.ui.setStatus(
-      "pi-solo-radar",
-      `ADRs: ${index.records.length + 1} active`,
-    );
+    await updateStatusBar(ctx);
   } else if (choice === choices[1]) {
     const title = (await ctx.ui.input("ADR Title:", draft.title))?.trim();
     if (!title) return;
@@ -234,10 +241,7 @@ async function promptAndSaveDraft(
     const saved = await saveRecord(targetRoot, editedDraft, configDir);
     invalidateCache();
     ctx.ui.notify(`Recorded ${saved.id}: ${saved.title}`, "info");
-    ctx.ui.setStatus(
-      "pi-solo-radar",
-      `ADRs: ${index.records.length + 1} active`,
-    );
+    await updateStatusBar(ctx);
   }
 }
 
@@ -533,6 +537,7 @@ async function handleNew(
 
   const saved = await saveRecord(ctx.cwd, draft, configDir);
   invalidateCache();
+  await updateStatusBar(ctx);
   ctx.ui.notify(
     `Vytvořeno ${saved.id}: ${saved.title}\nUloženo do ${saved.file}`,
     "info",
@@ -679,15 +684,25 @@ async function handleStatus(ctx: ExtensionCommandContext): Promise<void> {
   const decisionsDir = getDecisionsDir(ctx.cwd, configDir);
   const indexPath = getIndexPath(ctx.cwd, configDir);
   const activeCount = index.records.filter((r) => r.status === "active").length;
+  const supersededCount = index.records.filter(
+    (r) => r.status === "superseded",
+  ).length;
+  const deprecatedCount = index.records.filter(
+    (r) => r.status === "deprecated",
+  ).length;
+  const statusDashboard = formatStatusLine(index) || "(prázdné / skryté)";
 
   const lines = [
     "# Stav pi-solo-radar",
     `- **Složka:** ${decisionsDir}`,
     `- **Index soubor:** ${indexPath}`,
+    `- **Statusline:** ${statusDashboard}`,
     `- **Model pro překlad:** ${config.translateModel}`,
     `- **Směrování podprojektů:** ${config.subprojectRouting ? "ZAPNUTO (auto-detekce)" : "VYPNUTO (cwd)"}`,
     `- **Celkem záznamů:** ${index.records.length}`,
-    `- **Aktivní pravidla:** ${activeCount}`,
+    `- **Aktivní (● active):** ${activeCount}`,
+    `- **Nahrazeno (○ superseded):** ${supersededCount}`,
+    `- **Zavrhnuto (× deprecated):** ${deprecatedCount}`,
     `- **Poslední aktualizace:** ${index.lastUpdated || "Nikdy"}`,
   ];
 
@@ -834,6 +849,7 @@ async function executeRecordAdr(
   invalidateCache();
 
   if (ctx.hasUI) {
+    await updateStatusBar(ctx);
     ctx.ui.notify(`[ADR] Recorded ${saved.id}: ${saved.title}`, "info");
   }
 

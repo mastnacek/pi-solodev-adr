@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "lastUpdated": "2026-08-31 11:19:15",
+  "records": [
+    {
+      "id": "SPAI-001",
+      "title": "vylepšit ADR zobrazení v statusline agenta Pi, podobně jako jsme to udělali v pi-spai pluginu",
+      "type": "Todo",
+      "status": "done",
+      "symbol": "x",
+      "timestamp": "2026-08-31 11:19:15",
+      "tags": [],
+      "file": "2026-08-31-SPAI-001-vylepsit-adr-zobrazeni-v-statusline-agenta-pi-podo.md"
+    }
+  ]
+}
