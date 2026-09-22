@@ -958,6 +958,9 @@ export default function (pi: ExtensionAPI): void {
     handleBeforeAgentStart(event.systemPrompt, ctx.cwd),
   );
   pi.on("agent_settled", (_event, ctx) => handleAgentSettled(ctx));
+  // Drop the session-scoped index cache on shutdown (AGENTS.md §5/§6);
+  // it is rebuilt lazily on the next session_start.
+  pi.on("session_shutdown", () => invalidateCache());
 
   // Custom tools for LLM agent
   registerTools(pi);
