@@ -279,11 +279,13 @@ async function openReaderView(
   initialRecord: ADRRecord,
   initialReadingMode = true,
 ): Promise<void> {
-  if (!ctx.hasUI) {
+  if (!ctx.hasUI || ctx.mode !== "tui") {
     const text = initialReadingMode
       ? formatReadingMode(initialRecord)
       : highlightADRMarkdown(initialRecord);
-    ctx.ui.notify(text, "info");
+    if (ctx.hasUI) {
+      ctx.ui.notify(text, "info");
+    }
     return;
   }
 
@@ -413,8 +415,10 @@ async function openDirectoryExplorer(
     return;
   }
 
-  if (!ctx.hasUI) {
-    ctx.ui.notify(renderDirectoryTable(index, decisionsDir), "info");
+  if (!ctx.hasUI || ctx.mode !== "tui") {
+    if (ctx.hasUI) {
+      ctx.ui.notify(renderDirectoryTable(index, decisionsDir), "info");
+    }
     return;
   }
 
