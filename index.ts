@@ -956,15 +956,26 @@ function registerTools(pi: ExtensionAPI): void {
 }
 
 export default function (pi: ExtensionAPI): void {
+  /** Unsubscribers from every `pi.on()`; drained on session_shutdown (AGENTS §5). */
+  const unsubscribers: Array<() => void> = [];
+
+  /** Retain a `pi.on()` return value; older engine typings declare it void. */
+  const track = (result: unknown): void => {
+    if (typeof result === "function") unsubscribers.push(result as () => void);
+  };
+
   // Lifecycle hooks
-  pi.on("session_start", (_event, ctx) => handleSessionStart(ctx));
-  pi.on("before_agent_start", (event, ctx) =>
+  track(pi.on("session_start", (_event, ctx) => handleSessionStart(ctx)));
+  track(pi.on("before_agent_start", (event, ctx) =>
     handleBeforeAgentStart(event.systemPrompt, ctx.cwd),
-  );
-  pi.on("agent_settled", (_event, ctx) => handleAgentSettled(ctx));
+  ));
+  track(pi.on("agent_settled", (_event, ctx) => handleAgentSettled(ctx)));
   // Drop the session-scoped index cache on shutdown (AGENTS.md §5/§6);
   // it is rebuilt lazily on the next session_start.
-  pi.on("session_shutdown", () => invalidateCache());
+  pi.on("session_shutdown", () => {
+    while (unsubscribers.length > 0) unsubscribers.pop()?.();
+    invalidateCache();
+  });
 
   // Custom tools for LLM agent
   registerTools(pi);
