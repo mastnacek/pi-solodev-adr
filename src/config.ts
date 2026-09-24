@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
@@ -16,39 +16,91 @@ export const DEFAULT_CONFIG: PluginConfig = {
   subprojectRouting: true,
 };
 
-export const CONFIG_PATH = join(
+/** Canonical global layer: ~/.pi/agent/pi-solodev-adr.json. */
+export const GLOBAL_CONFIG_FILE = join(
+  homedir(),
+  ".pi",
+  "agent",
+  "pi-solodev-adr.json",
+);
+
+/**
+ * Legacy filename this plugin shipped with before the rename. Read as a
+ * fallback so existing installs keep their settings; never written to.
+ */
+export const LEGACY_CONFIG_FILE = join(
   homedir(),
   ".pi",
   "agent",
   "pi-solo-radar.json",
 );
 
-export function loadConfig(): PluginConfig {
-  try {
-    if (existsSync(CONFIG_PATH)) {
-      const raw = readFileSync(CONFIG_PATH, "utf8");
-      const parsed = JSON.parse(raw) as Partial<PluginConfig>;
-      return {
-        ...DEFAULT_CONFIG,
-        ...parsed,
-        subprojectRouting:
-          typeof parsed.subprojectRouting === "boolean"
-            ? parsed.subprojectRouting
-            : DEFAULT_CONFIG.subprojectRouting,
-      };
-    }
-  } catch {
-    // Non-fatal
-  }
-  return { ...DEFAULT_CONFIG };
+/** Kept for callers that only need the global path. */
+export const CONFIG_PATH = GLOBAL_CONFIG_FILE;
+
+/** Project override: <cwd>/.pi/pi-solodev-adr.json (wins over the global file). */
+export function projectConfigPath(cwd: string): string {
+  return join(cwd, ".pi", "pi-solodev-adr.json");
 }
 
-export function saveConfig(cfg: Partial<PluginConfig>): void {
+/**
+ * Session cwd the cascade hangs off. Set on session_start; without it only the
+ * global layer applies.
+ */
+let activeCwd: string | undefined;
+
+export function setConfigCwd(cwd?: string): void {
+  activeCwd = cwd;
+}
+
+function readLayer(file: string): Partial<PluginConfig> {
   try {
-    const current = loadConfig();
-    const updated: PluginConfig = { ...current, ...cfg };
-    mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-    writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2), "utf8");
+    if (existsSync(file)) {
+      return JSON.parse(readFileSync(file, "utf8")) as Partial<PluginConfig>;
+    }
+  } catch {
+    // Corrupt layer — fall through to the next one.
+  }
+  return {};
+}
+
+/**
+ * Effective config with the mandatory cascade:
+ * defaults <- legacy <- ~/.pi/agent/pi-solodev-adr.json <- <cwd>/.pi/pi-solodev-adr.json.
+ */
+export function loadConfig(cwd: string | undefined = activeCwd): PluginConfig {
+  const merged = {
+    ...DEFAULT_CONFIG,
+    ...readLayer(LEGACY_CONFIG_FILE),
+    ...readLayer(GLOBAL_CONFIG_FILE),
+  };
+  if (cwd) Object.assign(merged, readLayer(projectConfigPath(cwd)));
+  return {
+    ...merged,
+    subprojectRouting:
+      typeof merged.subprojectRouting === "boolean"
+        ? merged.subprojectRouting
+        : DEFAULT_CONFIG.subprojectRouting,
+  };
+}
+
+/**
+ * Merge a patch into the effective config. `--global` (isGlobal) writes
+ * ~/.pi/agent/, otherwise <cwd>/.pi/; without a cwd the global file is used.
+ * The write is atomic (temp file + rename) so a crash cannot truncate it.
+ */
+export function saveConfig(
+  cfg: Partial<PluginConfig>,
+  isGlobal = false,
+  cwd: string | undefined = activeCwd,
+): void {
+  try {
+    const updated: PluginConfig = { ...loadConfig(cwd), ...cfg };
+    const target = isGlobal || !cwd ? GLOBAL_CONFIG_FILE : projectConfigPath(cwd);
+    mkdirSync(dirname(target), { recursive: true });
+    const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
+    writeFileSync(tmp, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
+    renameSync(tmp, target);
   } catch {
     // Non-fatal
   }

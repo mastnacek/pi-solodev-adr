@@ -30,7 +30,7 @@ import {
   searchRecords,
 } from "./src/ledger.js";
 import type { ADRDraft, ADRIndex, ADRRecord, ADRStatus } from "./src/types.js";
-import { getAvailableModels, loadConfig, saveConfig } from "./src/config.js";
+import { getAvailableModels, loadConfig, saveConfig, setConfigCwd } from "./src/config.js";
 import {
   coralGlow,
   cyanGlow,
@@ -617,6 +617,7 @@ async function handleSearch(
 async function handleModel(
   remainder: string,
   ctx: ExtensionCommandContext,
+  isGlobal = false,
 ): Promise<void> {
   const config = loadConfig();
   const cleanModel = remainder.trim();
@@ -633,9 +634,9 @@ async function handleModel(
     return;
   }
 
-  saveConfig({ translateModel: cleanModel });
+  saveConfig({ translateModel: cleanModel }, isGlobal, ctx.cwd);
   ctx.ui.notify(
-    `Model pro překlad nastaven na: ${pinkGlow(cleanModel)}`,
+    `Model pro překlad nastaven na: ${pinkGlow(cleanModel)}${isGlobal ? " (uloženo globálně)" : " (uloženo do projektu)"}`,
     "info",
   );
 }
@@ -643,9 +644,11 @@ async function handleModel(
 async function handleRouting(
   remainder: string,
   ctx: ExtensionCommandContext,
+  isGlobal = false,
 ): Promise<void> {
   const config = loadConfig();
   const lower = remainder.trim().toLowerCase();
+  const scopeSuffix = isGlobal ? " (uloženo globálně)" : " (uloženo do projektu)";
 
   if (!lower) {
     const stateText = config.subprojectRouting
@@ -659,18 +662,18 @@ async function handleRouting(
   }
 
   if (lower === "on" || lower === "true" || lower === "enable") {
-    saveConfig({ subprojectRouting: true });
+    saveConfig({ subprojectRouting: true }, isGlobal, ctx.cwd);
     ctx.ui.notify(
-      `Směrování podprojektů zapnuto ${greenGlow("[ZAPNUTO]")}: ADR se automaticky ukládají do zjištěného repozitáře podprojektu.`,
+      `Směrování podprojektů zapnuto ${greenGlow("[ZAPNUTO]")}: ADR se automaticky ukládají do zjištěného repozitáře podprojektu.${scopeSuffix}`,
       "info",
     );
     return;
   }
 
   if (lower === "off" || lower === "false" || lower === "disable") {
-    saveConfig({ subprojectRouting: false });
+    saveConfig({ subprojectRouting: false }, isGlobal, ctx.cwd);
     ctx.ui.notify(
-      `Směrování podprojektů vypnuto ${goldGlow("[VYPNUTO]")}: ADR se budou vždy ukládat do kořene aktuální session.`,
+      `Směrování podprojektů vypnuto ${goldGlow("[VYPNUTO]")}: ADR se budou vždy ukládat do kořene aktuální session.${scopeSuffix}`,
       "info",
     );
     return;
@@ -740,9 +743,36 @@ function handleHelp(ctx: ExtensionCommandContext): void {
   ctx.ui.notify(lines.join("\n"), "info");
 }
 
+/** `--global` row offered at the first level. */
+const GLOBAL_ROW: AutocompleteItem = {
+  value: "--global ",
+  label: "--global",
+  description: "Uložit následující nastavení globálně (~/.pi/agent/)",
+};
+
 async function getCompletions(
   prefix: string,
 ): Promise<AutocompleteItem[] | null> {
+  // `--global` prefix: complete the remainder, then re-prefix the suggestions.
+  const trimmed = prefix.trimStart();
+  if (trimmed.startsWith("--global")) {
+    const afterGlobal = trimmed.slice(8).trimStart();
+    const hasTrailingSpace = trimmed.length > 8 || /\s$/.test(prefix);
+    if (!hasTrailingSpace && afterGlobal === "") return [GLOBAL_ROW];
+    const sub = await getCompletions(afterGlobal);
+    if (!sub) return null;
+    const out: AutocompleteItem[] = [];
+    for (const item of sub) {
+      if (item.label === "--global") continue;
+      out.push({
+        value: `--global ${item.value}`,
+        label: item.label,
+        description: item.description,
+      });
+    }
+    return out.length > 0 ? out : null;
+  }
+
   const configDir = getConfigDir();
   const tokens = prefix.split(/\s+/).filter(Boolean);
   const trailingSpace = /\s$/.test(prefix);
@@ -820,6 +850,7 @@ async function getCompletions(
   const typed = (tokens[0] ?? "").toLowerCase();
   const NON_TERMINAL = new Set(["new", "show", "search", "model", "routing"]);
   const items: AutocompleteItem[] = [];
+  if ("--global".startsWith(typed)) items.push(GLOBAL_ROW);
   for (const cmd of SUBCOMMANDS) {
     if (cmd.value.toLowerCase().startsWith(typed)) {
       items.push({
@@ -969,7 +1000,11 @@ export default function (pi: ExtensionAPI): void {
   };
 
   // Lifecycle hooks
-  track(pi.on("session_start", (_event, ctx) => handleSessionStart(ctx)));
+  track(pi.on("session_start", (_event, ctx) => {
+    // Point the config cascade at this session's project layer.
+    setConfigCwd(ctx.cwd);
+    handleSessionStart(ctx);
+  }));
   track(pi.on("before_agent_start", (event, ctx) =>
     handleBeforeAgentStart(event.systemPrompt, ctx.cwd),
   ));
@@ -992,8 +1027,10 @@ export default function (pi: ExtensionAPI): void {
       args: string,
       ctx: ExtensionCommandContext,
     ): Promise<void> => {
-      const trimmed = args.trim();
-      const [subcommand = "list", ...rest] = trimmed.split(/\s+/);
+      const rawTokens = args.trim().split(/\s+/).filter(Boolean);
+      const isGlobal = rawTokens.some((t) => t.toLowerCase() === "--global");
+      const tokens = rawTokens.filter((t) => t.toLowerCase() !== "--global");
+      const [subcommand = "list", ...rest] = tokens;
       const remainder = rest.join(" ").trim();
 
       switch (subcommand.toLowerCase()) {
@@ -1010,10 +1047,10 @@ export default function (pi: ExtensionAPI): void {
           await handleSearch(remainder, ctx);
           break;
         case "model":
-          await handleModel(remainder, ctx);
+          await handleModel(remainder, ctx, isGlobal);
           break;
         case "routing":
-          await handleRouting(remainder, ctx);
+          await handleRouting(remainder, ctx, isGlobal);
           break;
         case "status":
           await handleStatus(ctx);
